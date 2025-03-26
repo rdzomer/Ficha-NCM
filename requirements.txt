@@ -1,0 +1,11 @@
+streamlit
+pandas
+xlsxwriter
+babel
+requests
+plotly
+openpyxl
+matplotlib
+plotly_express
+pdfplumber
+#urllib3<2
