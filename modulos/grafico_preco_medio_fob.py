@@ -1,152 +1,97 @@
-# -*- coding: utf-8 -*-
-import pandas as pd
 import plotly.graph_objects as go
-import logging
+import pandas as pd
+import numpy as np
 
-# Configuração básica de logging
-# logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - [GRAF_PRECO_MEDIO] - %(message)s')
+def _calcular_ticks_eixo_y(max_value):
+    """Calcula intervalos seguros para diferentes faixas de valores do eixo Y."""
+    if max_value == 0:
+        return [0, 0.5], ['0.00', '0.50']
+    step = max_value / 5
+    ticks = [i * step for i in range(6)]
+    return ticks, [f"{tick:.4f}" for tick in ticks]
 
-def gerar_grafico_preco_medio(df_hist_anual, df_2024_parcial, ncm_formatado, last_updated_month):
+def gerar_grafico_preco_medio(df_2025, df_2024_parcial, ncm_formatado, last_updated_month):
     """
-    Gera um gráfico de linhas comparando o preço médio anual (histórico)
-    e, opcionalmente, o preço médio parcial do ano anterior.
+    Gera o gráfico de Preço Médio (US$ FOB/KG) para os anos de 2025 e dados parciais de 2024.
 
-    Args:
-        df_hist_anual (pd.DataFrame): DataFrame com dados históricos ANUAIS.
-                                      Deve conter 'Ano', 'Preço Médio Exportação (US$ FOB/KG)',
-                                      'Preço Médio Importação (US$ FOB/KG)'.
-        df_2024_parcial (pd.DataFrame): DataFrame com dados parciais de 2024 (1 linha).
-                                        Pode conter as mesmas colunas de preço médio.
-        ncm_formatado (str): String do NCM formatado para o título.
-        last_updated_month (int): Mês da última atualização (para info no título, se necessário).
+    Parâmetros:
+      df_2025         : DataFrame com dados completos de 2025.
+      df_2024_parcial : DataFrame com dados parciais de 2024.
+      ncm_formatado   : String do NCM formatado utilizada no título do gráfico.
+      last_updated_month : Mês da última atualização (para exibir no rótulo de 2024 parcial).
 
-    Returns:
-        plotly.graph_objects.Figure: Figura do Plotly ou uma figura vazia em caso de erro.
+    Retorna:
+      Uma figura Plotly.
     """
-    fig = go.Figure()
-    logging.info(f"Gerando gráfico de preço médio para NCM {ncm_formatado}")
+    if df_2025 is None or df_2025.empty:
+        return go.Figure()
 
     try:
-        # --- Validação e Preparação dos Dados ---
-        df_hist = pd.DataFrame()
-        df_parcial = pd.DataFrame()
+        # --- Cópia dos DataFrames para evitar alterar os originais ---
+        df_2025 = df_2025.copy()
 
-        # Valida e copia histórico anual
-        if isinstance(df_hist_anual, pd.DataFrame) and not df_hist_anual.empty:
-            df_hist = df_hist_anual.copy()
-            # Colunas esperadas no histórico
-            cols_hist_esperadas = ['Ano', 'Preço Médio Exportação (US$ FOB/KG)', 'Preço Médio Importação (US$ FOB/KG)']
-            for col in cols_hist_esperadas:
-                if col not in df_hist.columns:
-                    logging.warning(f"Coluna histórica '{col}' ausente para gráfico de preço médio.")
-                    df_hist[col] = pd.NA # Adiciona como NA
-                # Garante conversão numérica
-                df_hist[col] = pd.to_numeric(df_hist[col], errors='coerce')
-            df_hist = df_hist.dropna(subset=['Ano']) # Remove anos inválidos
-        else:
-            logging.warning("DataFrame histórico anual inválido ou vazio para gráfico de preço médio.")
+        # Se os valores estiverem como string (ex.: "1.234,56"), descomente as linhas abaixo:
+        # df_2025['Exportações (FOB)'] = df_2025['Exportações (FOB)'].apply(lambda x: float(str(x).replace('.', '').replace(',', '.')))
+        # df_2025['Exportações (KG)']  = df_2025['Exportações (KG)'].apply(lambda x: float(str(x).replace('.', '').replace(',', '')))
+        # df_2025['Importações (FOB)'] = df_2025['Importações (FOB)'].apply(lambda x: float(str(x).replace('.', '').replace(',', '.')))
+        # df_2025['Importações (KG)']  = df_2025['Importações (KG)'].apply(lambda x: float(str(x).replace('.', '').replace(',', '')))
 
-        # Valida e copia parcial 2024
-        if isinstance(df_2024_parcial, pd.DataFrame) and not df_2024_parcial.empty:
-            df_parcial = df_2024_parcial.copy()
-            # Colunas esperadas no parcial (podem ou não existir)
-            cols_parcial_esperadas = ['Ano', 'Preço Médio Exportação (US$ FOB/KG)', 'Preço Médio Importação (US$ FOB/KG)']
-            for col in cols_parcial_esperadas:
-                 if col not in df_parcial.columns:
-                      # Não é um erro grave se não existir no parcial
-                      df_parcial[col] = pd.NA
-                 # Garante conversão numérica
-                 df_parcial[col] = pd.to_numeric(df_parcial[col], errors='coerce')
-            df_parcial = df_parcial.dropna(subset=['Ano'])
-        else:
-            logging.info("DataFrame parcial 2024 inválido ou vazio, não será plotado no gráfico de preço médio.")
+        # --- Cálculo do preço médio para 2025 ---
+        df_2025['Preco Export'] = df_2025['Exportações (FOB)'] / df_2025['Exportações (KG)']
+        df_2025['Preco Import'] = df_2025['Importações (FOB)'] / df_2025['Importações (KG)']
 
+        # --- Processamento do DataFrame parcial de 2024 ---
+        df_2024_proc = pd.DataFrame()
+        if df_2024_parcial is not None and not df_2024_parcial.empty:
+            df_2024_proc = df_2024_parcial.copy()
+            # Se necessário, converta os valores como acima para float antes do cálculo
+            df_2024_proc['Preco Export'] = df_2024_proc['Exportações (FOB)'] / df_2024_proc['Exportações (KG)']
+            df_2024_proc['Preco Import'] = df_2024_proc['Importações (FOB)'] / df_2024_proc['Importações (KG)']
+            df_2024_proc['year'] = f"2024 (Até mês {str(last_updated_month).zfill(2)})"
 
-        # --- Adição dos Traces ---
-        plotou_algo = False
+        # --- Combinação dos dados ---
+        # Se a coluna "year" não existir em df_2025, adicione-a:
+        if 'year' not in df_2025.columns:
+            df_2025['year'] = '2025'
+        df_plot = pd.concat([
+            df_2025[['year', 'Preco Export', 'Preco Import']],
+            df_2024_proc[['year', 'Preco Export', 'Preco Import']]
+        ], ignore_index=True)
 
-        # Plotar histórico de exportação
-        if not df_hist.empty and 'Ano' in df_hist.columns and 'Preço Médio Exportação (US$ FOB/KG)' in df_hist.columns and df_hist['Preço Médio Exportação (US$ FOB/KG)'].notna().any():
+        # Ordenação: trata o rótulo parcial de 2024 de forma especial
+        df_plot['ano_num'] = df_plot['year'].apply(
+            lambda x: 2026 if '2024 (Até' in str(x)
+                      else (2025 if '2025' in str(x)
+                      else int(str(x)[:4]))
+        )
+        df_plot = df_plot.sort_values('ano_num')
+
+        # --- Criação do gráfico ---
+        fig = go.Figure()
+        for serie, cor, nome in [('Preco Export', 'blue', 'Exportação'),
+                                 ('Preco Import', 'red', 'Importação')]:
             fig.add_trace(go.Scatter(
-                x=df_hist['Ano'],
-                y=df_hist['Preço Médio Exportação (US$ FOB/KG)'],
+                x=df_plot['year'],
+                y=df_plot[serie],
+                name=nome,
                 mode='lines+markers',
-                name='Preço Médio Exp (Anual)',
-                line=dict(color='royalblue', width=2),
-                marker=dict(color='royalblue', size=6)
+                line=dict(color=cor),
+                marker=dict(size=8)
             ))
-            plotou_algo = True
 
-        # Plotar histórico de importação
-        if not df_hist.empty and 'Ano' in df_hist.columns and 'Preço Médio Importação (US$ FOB/KG)' in df_hist.columns and df_hist['Preço Médio Importação (US$ FOB/KG)'].notna().any():
-            fig.add_trace(go.Scatter(
-                x=df_hist['Ano'],
-                y=df_hist['Preço Médio Importação (US$ FOB/KG)'],
-                mode='lines+markers',
-                name='Preço Médio Imp (Anual)',
-                line=dict(color='firebrick', width=2),
-                marker=dict(color='firebrick', size=6)
-            ))
-            plotou_algo = True
-
-        # Adicionar pontos parciais (ex: 2024) se existirem e forem válidos
-        # (Pode ser útil para comparar o valor parcial com a linha histórica)
-        # Exemplo para exportação 2024:
-        if not df_parcial.empty and 'Ano' in df_parcial.columns and 'Preço Médio Exportação (US$ FOB/KG)' in df_parcial.columns and df_parcial['Preço Médio Exportação (US$ FOB/KG)'].notna().iloc[0]:
-             fig.add_trace(go.Scatter(
-                  x=df_parcial['Ano'],
-                  y=df_parcial['Preço Médio Exportação (US$ FOB/KG)'],
-                  mode='markers',
-                  name=f'Preço Médio Exp ({df_parcial["Ano"].iloc[0]} Parcial)',
-                  marker=dict(color='lightblue', size=10, symbol='star', line=dict(color='black', width=1))
-             ))
-             # plotou_algo = True # Não necessariamente indica que o gráfico principal foi plotado
-
-        # Exemplo para importação 2024:
-        if not df_parcial.empty and 'Ano' in df_parcial.columns and 'Preço Médio Importação (US$ FOB/KG)' in df_parcial.columns and df_parcial['Preço Médio Importação (US$ FOB/KG)'].notna().iloc[0]:
-             fig.add_trace(go.Scatter(
-                  x=df_parcial['Ano'],
-                  y=df_parcial['Preço Médio Importação (US$ FOB/KG)'],
-                  mode='markers',
-                  name=f'Preço Médio Imp ({df_parcial["Ano"].iloc[0]} Parcial)',
-                  marker=dict(color='lightcoral', size=10, symbol='star', line=dict(color='black', width=1))
-             ))
-             # plotou_algo = True
-
-
-        # --- Layout e Finalização ---
-        if plotou_algo:
-            fig.update_layout(
-                title=f'Preço Médio Anual (US$ FOB/KG) - NCM {ncm_formatado}',
-                xaxis_title='Ano',
-                yaxis_title='Preço Médio (US$ FOB/KG)',
-                xaxis=dict(type='category'), # Trata anos como categorias se houver saltos
-                yaxis=dict(tickformat="$.2f"), # Formata eixo Y como dólar
-                hovermode="x unified",
-                legend_title_text='Legenda'
-            )
-        else:
-            # Se nada foi plotado, exibe mensagem no gráfico
-            fig.update_layout(
-                 title=f'Preço Médio Anual (US$ FOB/KG) - NCM {ncm_formatado}',
-                 xaxis=dict(visible=False),
-                 yaxis=dict(visible=False),
-                 annotations=[dict(text="Dados insuficientes para gerar o gráfico de preço médio.",
-                                   xref="paper", yref="paper", showarrow=False, font=dict(size=14))]
-            )
-            logging.warning(f"Nenhum dado válido encontrado para plotar o gráfico de preço médio (NCM: {ncm_formatado}).")
-
+        fig.update_layout(
+            title=f'Preço Médio - NCM {ncm_formatado}',
+            xaxis_title='Ano',
+            yaxis_title='US$ FOB/KG',
+            xaxis=dict(type='category', tickangle=-45),
+            legend=dict(orientation="h", y=1.1),
+            height=500
+        )
         return fig
 
     except Exception as e:
-        logging.error(f"Erro inesperado na geração do gráfico de preço médio: {e}", exc_info=True)
-        # Retorna uma figura vazia com mensagem de erro
-        return go.Figure().update_layout(
-            title=f"Erro ao Gerar Gráfico de Preço Médio - NCM {ncm_formatado}",
-            xaxis=dict(visible=False), yaxis=dict(visible=False),
-            annotations=[dict(text=f"Erro: {e}", xref="paper", yref="paper", showarrow=False, font=dict(size=12))]
-        )
-
+        print(f"Erro na geração do gráfico: {str(e)}")
+        return go.Figure()
 
 
 
