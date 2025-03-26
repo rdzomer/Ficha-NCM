@@ -53,11 +53,11 @@ def obter_resumo_exportacoes():
     }
     return pd.DataFrame(data)
 
-def exibir_resumos():
+def exibir_resumos(df_2024_parcial, df_2025_parcial):
     st.subheader("📋 Quadro Resumo das Importações")
     df_imp = obter_resumo_importacoes()
-    st.dataframe(df_imp)
+    st.dataframe(df_imp, hide_index=True)
 
     st.subheader("📋 Quadro Resumo das Exportações")
     df_exp = obter_resumo_exportacoes()
-    st.dataframe(df_exp)
+    st.dataframe(df_exp, hide_index=True)
