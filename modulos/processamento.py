@@ -413,3 +413,4 @@ def processar_dados_ano_atual(dados_export, dados_import, last_updated_month):
     # Exemplo: Se a API está em Fev/2025, o ano atual é 2025.
     ano_atual = 2025 # Temporariamente fixo
     return _processar_dados_parciais(dados_export, dados_import, ano_atual, last_updated_month)
+
