@@ -269,8 +269,8 @@ def exibir_excel(ncm_code):
         return
 
     st.subheader("📋 Dados da Planilha CGIM (Excel)")
-    resultado_ncm = pd.DataFrame() # Inicializa como DF vazio
-    resultado_entidades = pd.DataFrame() # Inicializa como DF vazio
+    resultado_ncm = pd.DataFrame()  # Inicializa como DF vazio
+    resultado_entidades = pd.DataFrame()  # Inicializa como DF vazio
 
     try:
         logging.info(f"Chamando proc.buscar_informacoes_ncm_completo para NCM: {ncm_code}")
@@ -281,30 +281,23 @@ def exibir_excel(ncm_code):
         logging.info(f"Resultado NCM (tipo): {type(resultado_ncm)}, Vazio?: {resultado_ncm.empty if isinstance(resultado_ncm, pd.DataFrame) else 'N/A'}")
         if isinstance(resultado_ncm, pd.DataFrame) and not resultado_ncm.empty:
             logging.info(f"Resultado NCM (colunas): {resultado_ncm.columns.tolist()}")
-
         logging.info(f"Resultado Entidades (tipo): {type(resultado_entidades)}, Vazio?: {resultado_entidades.empty if isinstance(resultado_entidades, pd.DataFrame) else 'N/A'}")
         if isinstance(resultado_entidades, pd.DataFrame) and not resultado_entidades.empty:
             logging.info(f"Resultado Entidades (colunas): {resultado_entidades.columns.tolist()}")
-        # --- FIM DO LOGGING ---
-
-    except AttributeError:
-         st.error("Erro: A função 'buscar_informacoes_ncm_completo' não foi encontrada no módulo 'processamento'. Verifique a importação e o nome da função.")
-         logging.error("Erro: Função 'buscar_informacoes_ncm_completo' não encontrada em 'proc'.")
-         return # Retorna aqui para evitar erros subsequentes
     except Exception as e:
         st.error(f"Erro ao buscar informações do NCM {ncm_code} no Excel: {str(e)}")
         logging.error(f"Erro em buscar_informacoes_ncm_completo para NCM {ncm_code}: {e}", exc_info=True)
-        return # Retorna aqui para evitar erros subsequentes
+        return
 
     # --- Exibe Departamento Responsável ---
     with st.container(border=True):
         st.markdown("##### Departamento Responsável")
-        # Verifica se o DataFrame é válido e não está vazio
+        # Verifica se o DataFrame resultado_ncm é válido e não está vazio
         if isinstance(resultado_ncm, pd.DataFrame) and not resultado_ncm.empty:
-            ncm_row = resultado_ncm.iloc[0] # Pega a primeira linha (deve haver apenas uma)
-            # Usando .get() com valor padrão "N/D" para evitar KeyErrors
+            ncm_row = resultado_ncm.iloc[0]  # Pega a primeira linha (deve haver apenas uma)
+            # Adiciona margin-bottom, border-bottom e padding-bottom para criar o espaçamento desejado
             ncm_info = f"""
-            <div style="font-size: 0.95em; line-height: 1.5;">
+            <div style="font-size: 0.95em; line-height: 1.5; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px;">
                 <strong>Departamento:</strong> {ncm_row.get("Departamento Responsável", "N/D")}<br>
                 <strong>Coordenação-Geral:</strong> {ncm_row.get("Coordenação-Geral Responsável", "N/D")}<br>
                 <strong>Agrupamento:</strong> {ncm_row.get("Agrupamento", "N/D")}<br>
@@ -316,6 +309,7 @@ def exibir_excel(ncm_code):
             st.markdown(ncm_info, unsafe_allow_html=True)
         else:
             st.info(f"Informações do departamento para o NCM {ncm_code} não encontradas na planilha.")
+
 
     # --- Exibe Informações das Entidades ---
     with st.container(border=True):
@@ -908,6 +902,10 @@ if __name__ == "__main__":
               st.error(f"Ocorreu um erro crítico inesperado na aplicação: {e}")
          except:
               pass
+
+
+
+
 
 
 
