@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
-# Versão Restaurada - Simples com Retry e verify=False
+# Versão CORRIGIDA - Baseada no código original funcional, com logging e cache
 
 import streamlit as st
 import requests
-import pandas as pd
+import pandas as pd # Embora não usado diretamente aqui, pode ser útil no futuro
 import logging
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 import time
+import random
 from datetime import datetime
 import warnings
 from urllib3.exceptions import InsecureRequestWarning
@@ -15,250 +14,362 @@ from urllib3.exceptions import InsecureRequestWarning
 # Suprime avisos de requisição insegura
 warnings.simplefilter('ignore', InsecureRequestWarning)
 
-# --- Configuração de Retentativas ---
-def _create_retry_session():
-    """Cria uma sessão de requests com política de retentativa."""
-    session = requests.Session()
-    retry_strategy = Retry(
-        total=3, # Número de tentativas
-        status_forcelist=[429, 500, 502, 503, 504], # Códigos que disparam retentativa
-        allowed_methods=["HEAD", "GET", "OPTIONS"],
-        backoff_factor=1 # Tempo de espera (1s, 2s, 4s...)
-    )
-    adapter = HTTPAdapter(max_retries=retry_strategy)
-    session.mount("http://", adapter)
-    session.mount("https://", adapter)
-    return session
+# --- Função Auxiliar de Requisição (Adaptada do Original com Logging) ---
+def _fazer_requisicao(url, method='get', payload=None, max_retries=5, initial_delay=1):
+    """
+    Função auxiliar para requisições com retry (para 429) e backoff exponencial.
+    Suporta GET e POST. Usa logging.
+    """
+    delay = initial_delay
+    response = None # Inicializa response
+    for attempt in range(max_retries):
+        try:
+            logging.debug(f"Tentativa {attempt + 1}/{max_retries} para {url} (Método: {method.upper()})")
+            if method.lower() == 'post' and payload:
+                response = requests.post(url, json=payload, verify=False, timeout=30) # Timeout maior para POST
+            elif method.lower() == 'get':
+                response = requests.get(url, verify=False, timeout=20)
+            else:
+                 logging.error(f"Método de requisição inválido: {method}")
+                 return None
 
-# --- Função Central de Requisição ---
-def _make_request(url, params=None, headers=None):
-    """Faz uma requisição GET com retentativas e VERIFICAÇÃO SSL DESABILITADA."""
-    session = _create_retry_session()
-    logging.debug(f"Executando requisição para {url} com VERIFICAÇÃO SSL DESABILITADA.")
-    try:
-        response = session.get(url, params=params, headers=headers, timeout=20, verify=False) # verify=False AQUI
-        response.raise_for_status() # Verifica erros HTTP após retentativas
-        logging.info(f"Requisição bem-sucedida para {url} (status {response.status_code}).")
-        return response.json()
-    except requests.exceptions.HTTPError as http_err:
-        logging.error(f"Erro HTTP persistente ao acessar {url}: {http_err} (Status: {response.status_code if 'response' in locals() else 'N/A'})")
-    except requests.exceptions.ConnectionError as conn_err:
-        logging.error(f"Erro de Conexão ao acessar {url}: {conn_err}")
-    except requests.exceptions.Timeout as timeout_err:
-        logging.error(f"Timeout ao acessar {url}: {timeout_err}")
-    except requests.exceptions.RequestException as req_err:
-        logging.error(f"Erro na requisição para {url}: {req_err}")
-    except Exception as e:
-        logging.error(f"Erro desconhecido durante a requisição para {url}: {e}", exc_info=True)
+            response.raise_for_status() # Levanta erro para 4xx/5xx (exceto 429 tratado abaixo)
+            logging.info(f"Requisição bem-sucedida para {url} (Status {response.status_code})")
+            return response # Retorna o objeto response completo
 
-    return None # Retorna None em caso de qualquer erro
+        except requests.exceptions.HTTPError as e:
+            # Tratamento específico para 429 (Too Many Requests)
+            if response is not None and response.status_code == 429:
+                logging.warning(f"Erro 429 (Too Many Requests) para {url}. Tentando novamente em {delay:.2f} segundos...")
+                time.sleep(delay)
+                delay *= 2 # Backoff exponencial
+                delay += random.uniform(0, 0.1 * delay) # Adiciona jitter
+            # Outros erros HTTP
+            else:
+                status_code = response.status_code if response is not None else "N/A"
+                logging.error(f"Erro HTTP {status_code} ao acessar {url}: {e}")
+                return None # Falha após erro HTTP não recuperável
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Erro de Requisição (Conexão/Timeout/Outro) ao acessar {url}: {e}")
+            # Pausa antes de tentar novamente em caso de erro de conexão/timeout
+            time.sleep(delay)
+            delay *= 1.5 # Aumenta o delay um pouco
+        except Exception as e:
+            logging.error(f"Erro inesperado durante a requisição para {url}: {e}", exc_info=True)
+            return None # Falha por erro inesperado
 
-# --- Funções de Obtenção de Dados (com Cache) ---
-# (As funções obter_data_ultima_atualizacao, obter_descricao_ncm, etc.,
-# permanecem exatamente como na última versão funcional, usando _make_request acima)
+    logging.error(f"Número máximo de tentativas ({max_retries}) excedido para a URL: {url}")
+    return None # Retorna None após todas as tentativas falharem
+
+# --- Funções de Obtenção de Dados (Usando URLs e Métodos CORRETOS) ---
 
 @st.cache_data(ttl=86400) # Cache de 1 dia
 def obter_data_ultima_atualizacao():
-    """Obtém a data da última atualização dos dados da API Comex Stat."""
-    logging.info("Obtendo data de última atualização da API Comex...")
-    url = "https://api-comexstat.mdic.gov.br/general/update"
-    data = _make_request(url)
-    if data and isinstance(data, list) and len(data) > 0 and isinstance(data[0], dict):
-        update_info = data[0]
-        last_update_date_str = update_info.get("lastUpdate")
-        last_period_str = update_info.get("lastPeriod")
-        if last_update_date_str and last_period_str and len(last_period_str) == 6:
-            try:
-                year = int(last_period_str[:4])
-                month = int(last_period_str[4:])
-                logging.info(f"Data de atualização obtida: {last_update_date_str}, Último Período: {month:02d}/{year}")
-                return last_update_date_str, year, month
-            except (ValueError, TypeError) as e:
-                logging.error(f"Erro ao processar data/período da API: {e}. Data: {last_update_date_str}, Período: {last_period_str}")
-        else:
-            logging.error(f"Formato inesperado na resposta da API de atualização: {update_info}")
+    """
+    Obtém a data da última atualização da API Comex Stat (URL CORRETA).
+    """
+    logging.info("Obtendo data de última atualização (URL CORRETA)...")
+    # URL CORRETA do código original
+    url = "https://api-comexstat.mdic.gov.br/general/dates/updated"
+    response = _fazer_requisicao(url, method='get') # Usa GET para este endpoint
+
+    if response:
+        try:
+            data = response.json()
+            # Estrutura de resposta CORRETA do código original
+            update_info = data.get('data', {})
+            last_update_date_str = update_info.get("updated")
+            last_period_str = update_info.get("lastPeriod") # Assumindo que 'lastPeriod' existe aqui também ou adaptar
+
+            # Tenta extrair ano/mês do lastPeriod se existir, senão usa year/monthNumber
+            year = update_info.get("year")
+            month = update_info.get("monthNumber")
+
+            if last_period_str and len(last_period_str) == 6:
+                 try:
+                     year = int(last_period_str[:4])
+                     month = int(last_period_str[4:])
+                 except (ValueError, TypeError):
+                     logging.warning(f"Não foi possível parsear 'lastPeriod': {last_period_str}. Usando 'year'/'monthNumber'.")
+                     year = update_info.get("year") # Fallback
+                     month = update_info.get("monthNumber") # Fallback
+
+            if last_update_date_str and year and month:
+                try:
+                    # Garante que ano e mês sejam inteiros
+                    year = int(year)
+                    month = int(month)
+                    logging.info(f"Data de atualização obtida: {last_update_date_str}, Último Período: {month:02d}/{year}")
+                    return last_update_date_str, year, month
+                except (ValueError, TypeError) as e:
+                     logging.error(f"Erro ao converter ano/mês para int: {e}. Ano: {year}, Mês: {month}")
+            else:
+                logging.error(f"Campos necessários não encontrados na resposta da API de atualização: {data}")
+
+        except requests.exceptions.JSONDecodeError:
+            logging.error(f"Erro ao decodificar JSON da resposta de {url}")
+        except Exception as e:
+            logging.error(f"Erro inesperado ao processar resposta de {url}: {e}", exc_info=True)
     else:
-        if data is None:
-             logging.error("Falha na requisição (_make_request retornou None) ao obter data de atualização.")
-        else:
-             logging.error(f"Resposta inválida ou vazia da API de atualização: {data}")
-    return None, None, None
+        # _fazer_requisicao já logou o erro
+        logging.error("Falha ao obter data de atualização (requisição falhou).")
+
+    return None, None, None # Retorno em caso de falha
 
 @st.cache_data(ttl=3600) # Cache de 1 hora
 def obter_descricao_ncm(ncm_code):
-    """Busca a descrição de um NCM na API."""
-    logging.info(f"Buscando descrição para NCM {ncm_code}...")
-    url = f"https://api-comexstat.mdic.gov.br/general/ncm/{ncm_code}"
-    data = _make_request(url)
-    if data and isinstance(data, list) and len(data) > 0 and isinstance(data[0], dict):
-        description = data[0].get("description")
-        if description:
-            logging.info(f"Descrição obtida para NCM {ncm_code}.")
-            return description
-        else:
-            logging.warning(f"Campo 'description' não encontrado na resposta da API para NCM {ncm_code}.")
-            return "Descrição não encontrada"
-    elif data == []:
-        logging.warning(f"NCM {ncm_code} não encontrado na API.")
-        return "NCM não encontrado"
+    """
+    Busca a descrição de um NCM na API (URL CORRETA).
+    """
+    logging.info(f"Buscando descrição para NCM {ncm_code} (URL CORRETA)...")
+    # URL CORRETA do código original
+    url = f"https://api-comexstat.mdic.gov.br/tables/ncm/{ncm_code}"
+    response = _fazer_requisicao(url, method='get') # Usa GET para este endpoint
+
+    if response:
+        try:
+            data = response.json()
+            # Estrutura de resposta CORRETA do código original
+            if 'data' in data and isinstance(data['data'], list) and len(data['data']) > 0:
+                description = data['data'][0].get('text', 'Descrição não encontrada (chave ausente)')
+                logging.info(f"Descrição obtida para NCM {ncm_code}.")
+                return description
+            else:
+                logging.warning(f"NCM {ncm_code} não encontrado ou formato de resposta inesperado: {data}")
+                return "NCM não encontrado"
+        except requests.exceptions.JSONDecodeError:
+            logging.error(f"Erro ao decodificar JSON da descrição do NCM {ncm_code}")
+            return "Erro ao processar descrição"
+        except (IndexError, KeyError, TypeError) as e:
+             logging.error(f"Erro ao extrair descrição da resposta para NCM {ncm_code}: {e}. Resposta: {data}")
+             return "Erro ao processar descrição"
+        except Exception as e:
+            logging.error(f"Erro inesperado ao obter descrição para NCM {ncm_code}: {e}", exc_info=True)
+            return "Erro ao buscar descrição"
     else:
-        if data is None:
-             logging.error(f"Falha na requisição ao buscar descrição para NCM {ncm_code}.")
-        else:
-             logging.error(f"Erro ou resposta inesperada ao buscar descrição para NCM {ncm_code}: {data}")
+        logging.error(f"Falha na requisição ao buscar descrição para NCM {ncm_code}.")
         return "Erro ao buscar descrição"
+
 
 @st.cache_data(ttl=3600)
 def obter_dados_comerciais(ncm_code, flow_type):
-    """Busca dados comerciais (histórico mensal completo) para um NCM e fluxo."""
-    logging.info(f"Buscando dados comerciais (histórico) para NCM {ncm_code}, fluxo {flow_type}...")
-    endpoint = "https://api-comexstat.mdic.gov.br/general"
-    params = {"flow": flow_type, "type": "monthly", "ncm": ncm_code, "detailed": "false"}
+    """
+    Busca dados comerciais (histórico mensal completo) usando POST e payload CORRETO.
+    Nota: O período original era 2004-2025. Ajustar se necessário.
+    """
+    logging.info(f"Buscando dados comerciais (histórico) para NCM {ncm_code}, fluxo {flow_type} (POST)...")
+    url = "https://api-comexstat.mdic.gov.br/general"
+    # Payload CORRETO do código original
+    payload = {
+        "flow": flow_type,
+        "monthDetail": False, # Ajuste conforme necessidade (original era False)
+        "period": {
+            "from": "2004-01", # Período original
+            "to": "2025-12"   # Período original
+        },
+        "filters": [{"filter": "ncm", "values": [ncm_code]}],
+        "details": [], # Ajuste se precisar de detalhes (ex: 'country')
+        "metrics": ["metricFOB", "metricKG"]
+    }
+    response = _fazer_requisicao(url, method='post', payload=payload)
     dados = []
     erro = None
-    try:
-        response_data = _make_request(endpoint, params)
-        if response_data is not None:
-            dados = response_data
+    if response:
+        try:
+            # Estrutura de resposta CORRETA do código original
+            data_list = response.json().get('data', {}).get('list', [])
+            dados = data_list
             logging.info(f"Dados comerciais (histórico) obtidos para NCM {ncm_code}, fluxo {flow_type}. {len(dados)} registros.")
-        else:
-            erro = f"Falha ao obter dados comerciais (histórico) para NCM {ncm_code}, fluxo {flow_type} (requisição falhou)."
-            logging.warning(erro)
-    except Exception as e:
-        erro = f"Erro inesperado ao processar dados comerciais (histórico): {e}"
-        logging.error(erro + f" NCM: {ncm_code}, Fluxo: {flow_type}", exc_info=True)
+        except requests.exceptions.JSONDecodeError:
+            erro = f"Erro ao decodificar JSON de dados comerciais para NCM {ncm_code}, fluxo {flow_type}."
+            logging.error(erro)
+        except Exception as e:
+            erro = f"Erro inesperado ao processar dados comerciais: {e}"
+            logging.error(erro + f" NCM: {ncm_code}, Fluxo: {flow_type}", exc_info=True)
+    else:
+        erro = f"Falha ao obter dados comerciais (histórico) para NCM {ncm_code}, fluxo {flow_type} (requisição POST falhou)."
+        logging.warning(erro) # Já logado em _fazer_requisicao, mas bom ter aqui
+
     return dados, erro
 
 @st.cache_data(ttl=3600)
 def obter_dados_comerciais_ano_anterior(ncm_code, flow_type, last_updated_month):
-    """Busca dados comerciais do ano anterior, até o mês correspondente ao último atualizado."""
-    # TODO: Obter ano dinamicamente
-    ano_anterior = 2024
-    mes_final_str = f"{last_updated_month:02d}"
-    periodo = f"{ano_anterior}01-{ano_anterior}{mes_final_str}"
-    logging.info(f"Buscando dados ({ano_anterior} - até mês {mes_final_str}) para NCM {ncm_code}, fluxo {flow_type}...")
-    endpoint = "https://api-comexstat.mdic.gov.br/general"
-    params = {"flow": flow_type, "type": "monthly", "period": periodo, "ncm": ncm_code, "detailed": "false"}
+    """
+    Busca dados comerciais do ano anterior (2024) até o mês atualizado (POST).
+    """
+    # TODO: Tornar o ano dinâmico se necessário
+    ano_anterior = datetime.now().year - 1 # Ou fixo 2024 se preferir
+    mes_final_str = f"{last_updated_month:02d}" # Garante 2 dígitos
+    periodo_from = f"{ano_anterior}-01"
+    periodo_to = f"{ano_anterior}-{mes_final_str}"
+
+    logging.info(f"Buscando dados ({periodo_from} a {periodo_to}) para NCM {ncm_code}, fluxo {flow_type} (POST)...")
+    url = "https://api-comexstat.mdic.gov.br/general"
+    # Payload CORRETO do código original, adaptado para o período
+    payload = {
+        "flow": flow_type,
+        "monthDetail": False,
+        "period": {
+            "from": periodo_from,
+            "to": periodo_to
+        },
+        "filters": [{"filter": "ncm", "values": [ncm_code]}],
+        "details": [],
+        "metrics": ["metricFOB", "metricKG"]
+    }
+    response = _fazer_requisicao(url, method='post', payload=payload)
     dados = []
     erro = None
-    try:
-        response_data = _make_request(endpoint, params)
-        if response_data is not None:
-            dados = response_data
+    if response:
+        try:
+            data_list = response.json().get('data', {}).get('list', [])
+            dados = data_list
             logging.info(f"Dados ({ano_anterior} - até mês {mes_final_str}) obtidos para NCM {ncm_code}, fluxo {flow_type}. {len(dados)} registros.")
-        else:
-            erro = f"Falha ao obter dados ({ano_anterior} - até mês {mes_final_str}) para NCM {ncm_code}, fluxo {flow_type}."
-            logging.warning(erro)
-    except Exception as e:
-        erro = f"Erro inesperado ao processar dados ({ano_anterior} - até mês {mes_final_str}): {e}"
-        logging.error(erro + f" NCM: {ncm_code}, Fluxo: {flow_type}", exc_info=True)
+        except requests.exceptions.JSONDecodeError:
+            erro = f"Erro JSON dados ano anterior NCM {ncm_code}, fluxo {flow_type}."
+            logging.error(erro)
+        except Exception as e:
+            erro = f"Erro inesperado processar dados ano anterior: {e}"
+            logging.error(erro + f" NCM: {ncm_code}, Fluxo: {flow_type}", exc_info=True)
+    else:
+        erro = f"Falha ao obter dados ({ano_anterior} - até mês {mes_final_str}) para NCM {ncm_code}, fluxo {flow_type} (POST falhou)."
+        logging.warning(erro)
+
     return dados, erro
 
 @st.cache_data(ttl=3600)
 def obter_dados_comerciais_ano_atual(ncm_code, flow_type, last_updated_month):
-    """Busca dados comerciais do ano atual, até o último mês atualizado."""
-    # TODO: Obter ano dinamicamente
-    ano_atual = 2025
-    mes_final_str = f"{last_updated_month:02d}"
-    periodo = f"{ano_atual}01-{ano_atual}{mes_final_str}"
-    logging.info(f"Buscando dados ({ano_atual} - até mês {mes_final_str}) para NCM {ncm_code}, fluxo {flow_type}...")
-    endpoint = "https://api-comexstat.mdic.gov.br/general"
-    params = {"flow": flow_type, "type": "monthly", "period": periodo, "ncm": ncm_code, "detailed": "false"}
+    """
+    Busca dados comerciais do ano atual até o último mês atualizado (POST).
+    """
+    # TODO: Tornar o ano dinâmico se necessário
+    ano_atual = datetime.now().year # Ou fixo 2025 se preferir
+    mes_final_str = f"{last_updated_month:02d}" # Garante 2 dígitos
+    periodo_from = f"{ano_atual}-01"
+    periodo_to = f"{ano_atual}-{mes_final_str}"
+
+    logging.info(f"Buscando dados ({periodo_from} a {periodo_to}) para NCM {ncm_code}, fluxo {flow_type} (POST)...")
+    url = "https://api-comexstat.mdic.gov.br/general"
+    # Payload CORRETO do código original, adaptado para o período
+    payload = {
+        "flow": flow_type,
+        "monthDetail": False,
+        "period": {
+            "from": periodo_from,
+            "to": periodo_to
+        },
+        "filters": [{"filter": "ncm", "values": [ncm_code]}],
+        "details": [],
+        "metrics": ["metricFOB", "metricKG"]
+    }
+    response = _fazer_requisicao(url, method='post', payload=payload)
     dados = []
     erro = None
-    try:
-        response_data = _make_request(endpoint, params)
-        if response_data is not None:
-            dados = response_data
+    if response:
+        try:
+            data_list = response.json().get('data', {}).get('list', [])
+            dados = data_list
             logging.info(f"Dados ({ano_atual} - até mês {mes_final_str}) obtidos para NCM {ncm_code}, fluxo {flow_type}. {len(dados)} registros.")
-        else:
-            erro = f"Falha ao obter dados ({ano_atual} - até mês {mes_final_str}) para NCM {ncm_code}, fluxo {flow_type}."
-            logging.warning(erro)
-    except Exception as e:
-        erro = f"Erro inesperado ao processar dados ({ano_atual} - até mês {mes_final_str}): {e}"
-        logging.error(erro + f" NCM: {ncm_code}, Fluxo: {flow_type}", exc_info=True)
+        except requests.exceptions.JSONDecodeError:
+            erro = f"Erro JSON dados ano atual NCM {ncm_code}, fluxo {flow_type}."
+            logging.error(erro)
+        except Exception as e:
+            erro = f"Erro inesperado processar dados ano atual: {e}"
+            logging.error(erro + f" NCM: {ncm_code}, Fluxo: {flow_type}", exc_info=True)
+    else:
+        erro = f"Falha ao obter dados ({ano_atual} - até mês {mes_final_str}) para NCM {ncm_code}, fluxo {flow_type} (POST falhou)."
+        logging.warning(erro)
+
     return dados, erro
 
 @st.cache_data(ttl=3600)
 def obter_dados_2024_por_pais(ncm_code):
-    """Busca dados de IMPORTAÇÃO de 2024 por país para um NCM."""
-    logging.info(f"Buscando dados de importação 2024 por país para NCM {ncm_code}...")
-    endpoint = "https://api-comexstat.mdic.gov.br/general"
-    params = {"flow": "import", "type": "monthly", "period": "2024", "ncm": ncm_code, "breakdown": "country"}
+    """
+    Obtém dados de IMPORTAÇÃO (US$ FOB) para 2024, detalhados por país (POST).
+    """
+    logging.info(f"Buscando dados de importação 2024 por país para NCM {ncm_code} (POST)...")
+    url = "https://api-comexstat.mdic.gov.br/general"
+    # Payload CORRETO do código original
+    payload = {
+        "flow": "import",
+        "monthDetail": False,
+        "period": {
+            "from": "2024-01",
+            "to": "2024-12" # Ano completo
+        },
+        "filters": [{"filter": "ncm", "values": [ncm_code]}],
+        "details": ["country"], # Detalhe por país
+        "metrics": ["metricFOB"]
+    }
+    response = _fazer_requisicao(url, method='post', payload=payload)
     dados = []
     erro = None
-    try:
-        response_data = _make_request(endpoint, params)
-        if response_data is not None:
-            dados = response_data
+    if response:
+        try:
+            data_list = response.json().get('data', {}).get('list', [])
+            dados = data_list
             logging.info(f"Dados de importação 2024 por país obtidos para NCM {ncm_code}. {len(dados)} registros.")
-        else:
-            erro = "Falha ao obter dados de importação 2024 por país (requisição falhou)."
-            logging.warning(erro + f" NCM: {ncm_code}")
-    except Exception as e:
-        erro = f"Erro inesperado ao processar dados de importação 2024 por país: {e}"
-        logging.error(erro + f" NCM: {ncm_code}", exc_info=True)
+        except requests.exceptions.JSONDecodeError:
+            erro = f"Erro JSON dados import 2024 por país NCM {ncm_code}."
+            logging.error(erro)
+        except Exception as e:
+            erro = f"Erro inesperado processar dados import 2024 por país: {e}"
+            logging.error(erro + f" NCM: {ncm_code}", exc_info=True)
+    else:
+        erro = f"Falha ao obter dados import 2024 por país para NCM {ncm_code} (POST falhou)."
+        logging.warning(erro)
+
+    # Retorna dados e erro para consistência com outras funções
     return dados, erro
 
 @st.cache_data(ttl=3600)
 def obter_dados_2024_por_pais_export(ncm_code):
-    """Busca dados de EXPORTAÇÃO de 2024 por país para um NCM."""
-    logging.info(f"Buscando dados de exportação 2024 por país para NCM {ncm_code}...")
-    endpoint = "https://api-comexstat.mdic.gov.br/general"
-    params = {"flow": "export", "type": "monthly", "period": "2024", "ncm": ncm_code, "breakdown": "country"}
+    """
+    Obtém dados de EXPORTAÇÃO (US$ FOB) para 2024, detalhados por país (POST).
+    """
+    logging.info(f"Buscando dados de exportação 2024 por país para NCM {ncm_code} (POST)...")
+    url = "https://api-comexstat.mdic.gov.br/general"
+    # Payload CORRETO do código original
+    payload = {
+        "flow": "export",
+        "monthDetail": False,
+        "period": {
+            "from": "2024-01",
+            "to": "2024-12" # Ano completo
+        },
+        "filters": [{"filter": "ncm", "values": [ncm_code]}],
+        "details": ["country"], # Detalhe por país
+        "metrics": ["metricFOB"]
+    }
+    response = _fazer_requisicao(url, method='post', payload=payload)
     dados = []
     erro = None
-    try:
-        response_data = _make_request(endpoint, params)
-        if response_data is not None:
-            dados = response_data
+    if response:
+        try:
+            data_list = response.json().get('data', {}).get('list', [])
+            dados = data_list
             logging.info(f"Dados de exportação 2024 por país obtidos para NCM {ncm_code}. {len(dados)} registros.")
-        else:
-            erro = "Falha ao obter dados de exportação 2024 por país (requisição falhou)."
-            logging.warning(erro + f" NCM: {ncm_code}")
-    except Exception as e:
-        erro = f"Erro inesperado ao processar dados de exportação 2024 por país: {e}"
-        logging.error(erro + f" NCM: {ncm_code}", exc_info=True)
+        except requests.exceptions.JSONDecodeError:
+            erro = f"Erro JSON dados export 2024 por país NCM {ncm_code}."
+            logging.error(erro)
+        except Exception as e:
+            erro = f"Erro inesperado processar dados export 2024 por país: {e}"
+            logging.error(erro + f" NCM: {ncm_code}", exc_info=True)
+    else:
+        erro = f"Falha ao obter dados export 2024 por país para NCM {ncm_code} (POST falhou)."
+        logging.warning(erro)
+
+    # Retorna dados e erro para consistência
     return dados, erro
 
-@st.cache_data(ttl=3600)
-def obter_dados_importacao_12meses(ncm_code):
-    """Busca dados mensais de importação dos últimos 12 meses disponíveis."""
-    logging.info(f"Buscando dados de importação dos últimos 12 meses para NCM {ncm_code}...")
-    periodo = None
-    try:
-        data_atualizacao, end_year, end_month = obter_data_ultima_atualizacao()
-        if end_year is None or end_month is None:
-            logging.error("Não foi possível obter a data de atualização para calcular os últimos 12 meses.")
-            return [], "Erro ao obter data de atualização"
-        end_date = datetime(end_year, end_month, 1)
-        start_year = end_year if end_month > 11 else end_year - 1
-        start_month = (end_month - 11) if end_month > 11 else (end_month - 11 + 12)
-        periodo = f"{start_year}{start_month:02d}-{end_year}{end_month:02d}"
-        logging.info(f"Período calculado para 12 meses: {periodo}")
-    except Exception as e:
-        logging.error(f"Erro ao calcular período de 12 meses: {e}", exc_info=True)
-        return [], f"Erro ao calcular período: {e}"
+# Função obter_dados_importacao_12meses (se necessária, adaptar para POST)
+# Se você precisar da função que busca os últimos 12 meses, me diga
+# e eu a adaptarei para usar o método POST e o payload correto.
 
-    if not periodo:
-         return [], "Não foi possível determinar o período de 12 meses."
+# Remover a função processar_dados daqui se ela não for mais usada neste módulo
+# def processar_dados(dados_export, dados_import, ano_ref): ...
 
-    endpoint = "https://api-comexstat.mdic.gov.br/general"
-    params = {"flow": "import", "type": "monthly", "period": periodo, "ncm": ncm_code, "detailed": "false"}
-    dados = []
-    erro = None
-    try:
-        response_data = _make_request(endpoint, params)
-        if response_data is not None:
-            dados = response_data
-            logging.info(f"Dados de importação 12 meses obtidos para NCM {ncm_code}. {len(dados)} registros.")
-        else:
-            erro = f"Falha ao obter dados de importação 12 meses para NCM {ncm_code}."
-            logging.warning(erro)
-    except Exception as e:
-        erro = f"Erro inesperado ao buscar dados de importação 12 meses: {e}"
-        logging.error(erro + f" NCM: {ncm_code}", exc_info=True)
-    return dados, erro
+
 
 
 
