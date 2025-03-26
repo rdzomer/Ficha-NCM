@@ -8,4 +8,5 @@ openpyxl
 matplotlib
 plotly_express
 pdfplumber
+pyPDF2
 #urllib3<2
