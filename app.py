@@ -361,63 +361,86 @@ def exibir_treemap(ncm_code, ncm_formatado, tipo_flow):
     titulo = f"📊 Treemap - {'Origem Importações' if tipo_flow == 'import' else 'Destino Exportações'} 2024 (US$ FOB)"
     st.subheader(titulo)
 
-    try:
-        dados = None
-        func_gerar_grafico = None
-        tipo_str = ""
+    dados = None # Inicializa dados como None
+    func_gerar_grafico = None
+    tipo_str = ""
 
+    try:
+        # --- BUSCA DE DADOS (CORRIGIDO: ESPERA APENAS 1 VALOR DE RETORNO) ---
         if tipo_flow == 'import':
-            # A função obter_dados_2024_por_pais DEVE ter @st.cache_data em api_comex.py
-            dados, erro_api = obter_dados_2024_por_pais(ncm_code)
-            func_gerar_grafico = gerar_treemap_importacoes_2024
             tipo_str = "importações"
+            func_gerar_grafico = gerar_treemap_importacoes_2024 # Função do módulo de gráfico
+            # Chama a função da API esperando SOMENTE a lista de dados ou None/lista vazia
+            dados = obter_dados_2024_por_pais(ncm_code) # <<< CORREÇÃO AQUI
+            logging.info(f"Dados brutos obtidos para Treemap {tipo_flow} NCM {ncm_code}: Tipo {type(dados)}, Conteúdo inicial: {str(dados)[:200]}...")
         elif tipo_flow == 'export':
-            # A função obter_dados_2024_por_pais_export DEVE ter @st.cache_data em api_comex.py
-            dados, erro_api = obter_dados_2024_por_pais_export(ncm_code)
-            func_gerar_grafico = gerar_treemap_exportacoes_2024
             tipo_str = "exportações"
+            func_gerar_grafico = gerar_treemap_exportacoes_2024 # Função do módulo de gráfico
+            # Chama a função da API esperando SOMENTE a lista de dados ou None/lista vazia
+            dados = obter_dados_2024_por_pais_export(ncm_code) # <<< CORREÇÃO AQUI
+            logging.info(f"Dados brutos obtidos para Treemap {tipo_flow} NCM {ncm_code}: Tipo {type(dados)}, Conteúdo inicial: {str(dados)[:200]}...")
         else:
             st.error("Tipo de fluxo inválido para Treemap.")
             logging.error(f"Tipo de fluxo inválido '{tipo_flow}' para Treemap.")
-            return
+            return # Sai da função
 
-        if erro_api:
-             st.warning(f"Erro ao buscar dados da API para Treemap de {tipo_str}: {erro_api}")
-             # Continua para verificar se 'dados' tem algo apesar do erro
-
-        if not dados: # Verifica se a lista está vazia
+        # --- VALIDAÇÃO DOS DADOS RECEBIDOS ---
+        if not isinstance(dados, list) or not dados:
             st.info(f"Nenhum dado de {tipo_str} 2024 por país disponível para gerar o Treemap (NCM: {ncm_formatado}).")
-            return
+            logging.info(f"Dados vazios, None ou tipo inválido ({type(dados)}) para Treemap {tipo_flow} NCM {ncm_code}.")
+            return # Sai da função se não há dados válidos
 
+        # --- PROCESSAMENTO E GERAÇÃO DO GRÁFICO ---
         df_treemap = pd.DataFrame(dados)
 
-        # Validação básica das colunas esperadas
         colunas_necessarias = ["country", "metricFOB"]
         if not all(col in df_treemap.columns for col in colunas_necessarias):
             st.warning(f"Os dados de {tipo_str} por país retornados não possuem as colunas esperadas ({', '.join(colunas_necessarias)}).")
             logging.warning(f"Colunas ausentes para Treemap {tipo_flow} NCM {ncm_code}. Colunas presentes: {df_treemap.columns.tolist()}")
-            return
+            return # Sai da função se colunas essenciais faltam
 
-        # Verifica se há dados após criar o DataFrame
-        if df_treemap.empty or df_treemap['metricFOB'].sum() == 0:
+        # Garante que metricFOB seja numérica antes de somar, tratando erros
+        df_treemap['metricFOB'] = pd.to_numeric(df_treemap['metricFOB'], errors='coerce').fillna(0)
+
+        # Verifica se há dados APÓS criar o DataFrame e tratar metricFOB
+        if df_treemap.empty or df_treemap['metricFOB'].sum() <= 0: # Verifica se a soma é positiva
              st.info(f"Dados de {tipo_str} 2024 por país estão vazios ou zerados para o Treemap (NCM: {ncm_formatado}).")
+             logging.info(f"DataFrame vazio ou métrica zerada/negativa para Treemap {tipo_flow} NCM {ncm_code}.")
+             return # Sai da função se não há o que plotar
+
+        # Chama a função de geração do gráfico (que deve estar importada corretamente e no módulo correto)
+        # Certifique-se que 'func_gerar_grafico' realmente contém a função correta
+        if func_gerar_grafico is None:
+             st.error(f"Erro interno: Função para gerar gráfico de {tipo_str} não definida.")
+             logging.error(f"func_gerar_grafico é None para tipo {tipo_flow}")
              return
 
-        # Gera e exibe o gráfico usando a função do módulo correspondente
         fig = func_gerar_grafico(df_treemap, ncm_code, ncm_formatado)
-        if isinstance(fig, go.Figure): # Verifica se é uma figura Plotly
+
+        # Exibe o gráfico
+        if isinstance(fig, go.Figure):
              st.plotly_chart(fig, use_container_width=True)
              logging.info(f"Treemap de {tipo_str} exibido para NCM {ncm_code}.")
         else:
-             st.warning(f"Não foi possível gerar o gráfico Treemap de {tipo_str} (função não retornou figura Plotly).")
-             logging.warning(f"Função gerar_treemap_{tipo_str}_2024 retornou tipo: {type(fig)}")
+             # Se a função de gerar gráfico retornou None ou algo diferente, informa o usuário
+             st.warning(f"Não foi possível gerar o gráfico Treemap de {tipo_str}.")
+             logging.warning(f"Função 'gerar_treemap..._{tipo_str}_2024' não retornou uma figura Plotly válida (Tipo: {type(fig)}) para NCM {ncm_code}")
 
+    # Captura erros específicos ou gerais durante o processo
+    except ImportError as e:
+         st.error(f"Erro: Módulo ou função para gerar Treemap de {tipo_str} não importado(a) corretamente: {e}")
+         logging.error(f"ImportError ao tentar gerar Treemap {tipo_flow} para NCM {ncm_code}.", exc_info=True)
     except AttributeError as e:
          st.error(f"Erro: Função para gerar Treemap de {tipo_str} não encontrada ou inválida: {e}")
          logging.error(f"Erro de atributo ao gerar Treemap {tipo_flow} para NCM {ncm_code}: {e}", exc_info=True)
-    except Exception as e:
+    except ValueError as e: # Captura especificamente erros de valor
+        st.error(f"Erro de valor ao processar dados do Treemap de {tipo_str}: {e}")
+        logging.error(f"ValueError ao gerar Treemap {tipo_flow} para NCM {ncm_code}: {e}", exc_info=True)
+    except Exception as e: # Captura outros erros inesperados
         st.error(f"Erro inesperado ao gerar Treemap de {tipo_str}: {e}")
-        logging.error(f"Erro ao gerar Treemap {tipo_flow} para NCM {ncm_code}: {e}", exc_info=True)
+        # Incluir exc_info=True no log para ter o traceback completo no log
+        logging.error(f"Erro INESPERADO na função exibir_treemap ({tipo_flow}, NCM {ncm_code}): {e}", exc_info=True)
+
 
 
 def exibir_api(ncm_code, last_updated_month, last_updated_year):
@@ -507,20 +530,19 @@ def exibir_api(ncm_code, last_updated_month, last_updated_year):
         logging.warning(f"Falha ao chamar resumo_tabelas.exibir_resumos: {e}", exc_info=True)
 
     # --- Geração e Exibição dos Gráficos ---
+     # --- Geração e Exibição dos Gráficos ---
     st.markdown("### Gráficos de Desempenho")
     # Verifica se o DataFrame histórico ANUAL é válido para gráficos que o usam
     if isinstance(df_hist_anual, pd.DataFrame) and not df_hist_anual.empty:
         ncm_formatado = f"{str(ncm_code)[:4]}.{str(ncm_code)[4:6]}.{str(ncm_code)[6:]}"
 
         # Cria colunas para organizar os gráficos principais
-        col_graf1, col_graf2 = st.columns(2)
+        col_graf1, col_graf2 = st.columns(2) # Mantém as duas colunas
 
-        with col_graf1:
+        with col_graf1: # Conteúdo da Primeira Coluna
+            # Importações (KG)
             try:
                 st.markdown("##### Importações (KG)")
-                # Passa os DFs necessários para a função do gráfico
-                # !!! ATENÇÃO: graf_kg.gerar_grafico_importacoes precisa ser adaptado para dados anuais ou usar dados mensais originais !!!
-                # Por ora, passaremos o DF anual. A função do gráfico pode precisar de ajuste.
                 fig_import_kg = graf_kg.gerar_grafico_importacoes(df_hist_anual, df_2024_parcial, ncm_formatado, last_updated_month, last_updated_year)
                 if isinstance(fig_import_kg, go.Figure):
                      st.plotly_chart(fig_import_kg, use_container_width=True)
@@ -533,9 +555,9 @@ def exibir_api(ncm_code, last_updated_month, last_updated_year):
                  st.error(f"Erro ao gerar gráfico de Importações (KG): {e}")
                  logging.error(f"Erro em gerar_grafico_importacoes (KG): {e}", exc_info=True)
 
+            # Importações (US$ FOB)
             try:
                 st.markdown("##### Importações (US$ FOB)")
-                # !!! ATENÇÃO: graf_fob.gerar_grafico_importacoes_fob precisa ser adaptado para dados anuais ou usar dados mensais originais !!!
                 fig_import_fob = graf_fob.gerar_grafico_importacoes_fob(df_hist_anual, df_2024_parcial, ncm_formatado, last_updated_month, last_updated_year)
                 if isinstance(fig_import_fob, go.Figure):
                      st.plotly_chart(fig_import_fob, use_container_width=True)
@@ -548,10 +570,26 @@ def exibir_api(ncm_code, last_updated_month, last_updated_year):
                  st.error(f"Erro ao gerar gráfico de Importações (FOB): {e}")
                  logging.error(f"Erro em gerar_grafico_importacoes_fob: {e}", exc_info=True)
 
-        with col_graf2:
+            # Preço Médio (US$ FOB/KG) - MOVIDO PARA CÁ
+            try:
+                st.markdown("##### Preço Médio (US$ FOB/KG)")
+                fig_preco_medio = graf_preco_medio.gerar_grafico_preco_medio(df_hist_anual, df_2024_parcial, ncm_formatado, last_updated_month)
+                if isinstance(fig_preco_medio, go.Figure):
+                     st.plotly_chart(fig_preco_medio, use_container_width=True)
+                else:
+                     st.warning("Gráfico de Preço Médio não pôde ser gerado.")
+            except AttributeError as e:
+                 st.error(f"Erro: Função 'gerar_grafico_preco_medio' não encontrada em 'graf_preco_medio': {e}")
+                 logging.error(f"Erro de atributo em graf_preco_medio.gerar_grafico_preco_medio: {e}", exc_info=True)
+            except Exception as e:
+                 st.error(f"Erro ao gerar gráfico de Preço Médio: {e}")
+                 logging.error(f"Erro em gerar_grafico_preco_medio: {e}", exc_info=True)
+
+
+        with col_graf2: # Conteúdo da Segunda Coluna
+            # Exportações (KG)
             try:
                 st.markdown("##### Exportações (KG)")
-                # !!! ATENÇÃO: graf_exp.gerar_grafico_exportacoes precisa ser adaptado para dados anuais ou usar dados mensais originais !!!
                 fig_export_kg = graf_exp.gerar_grafico_exportacoes(df_hist_anual, df_2024_parcial, ncm_formatado, last_updated_month, last_updated_year)
                 if isinstance(fig_export_kg, go.Figure):
                      st.plotly_chart(fig_export_kg, use_container_width=True)
@@ -564,9 +602,9 @@ def exibir_api(ncm_code, last_updated_month, last_updated_year):
                  st.error(f"Erro ao gerar gráfico de Exportações (KG): {e}")
                  logging.error(f"Erro em gerar_grafico_exportacoes (KG): {e}", exc_info=True)
 
+            # Exportações (US$ FOB)
             try:
                 st.markdown("##### Exportações (US$ FOB)")
-                # !!! ATENÇÃO: graf_exp_fob.gerar_grafico_exportacoes_fob precisa ser adaptado para dados anuais ou usar dados mensais originais !!!
                 fig_export_fob = graf_exp_fob.gerar_grafico_exportacoes_fob(df_hist_anual, df_2024_parcial, ncm_formatado, last_updated_month, last_updated_year)
                 if isinstance(fig_export_fob, go.Figure):
                      st.plotly_chart(fig_export_fob, use_container_width=True)
@@ -579,53 +617,43 @@ def exibir_api(ncm_code, last_updated_month, last_updated_year):
                  st.error(f"Erro ao gerar gráfico de Exportações (FOB): {e}")
                  logging.error(f"Erro em gerar_grafico_exportacoes_fob: {e}", exc_info=True)
 
-        # Gráficos que ocupam a largura toda
-        try:
-            st.markdown("##### Preço Médio (US$ FOB/KG)")
-            # !!! ATENÇÃO: graf_preco_medio.gerar_grafico_preco_medio precisa ser adaptado para dados anuais ou usar dados mensais originais !!!
-            fig_preco_medio = graf_preco_medio.gerar_grafico_preco_medio(df_hist_anual, df_2024_parcial, ncm_formatado, last_updated_month)
-            if isinstance(fig_preco_medio, go.Figure):
-                 st.plotly_chart(fig_preco_medio, use_container_width=True)
-            else:
-                 st.warning("Gráfico de Preço Médio não pôde ser gerado.")
-        except AttributeError as e:
-             st.error(f"Erro: Função 'gerar_grafico_preco_medio' não encontrada em 'graf_preco_medio': {e}")
-             logging.error(f"Erro de atributo em graf_preco_medio.gerar_grafico_preco_medio: {e}", exc_info=True)
-        except Exception as e:
-             st.error(f"Erro ao gerar gráfico de Preço Médio: {e}")
-             logging.error(f"Erro em gerar_grafico_preco_medio: {e}", exc_info=True)
-
-        try:
-            st.markdown("##### Importações Acumuladas (12 Meses - KG)")
-            # Esta função provavelmente busca dados mensais internamente, pode não precisar de df_hist_anual
-            fig_12m = gerar_grafico_importacoes_12meses(ncm_code, ncm_formatado)
-            if fig_12m is not None:
-                if isinstance(fig_12m, go.Figure):
-                     st.plotly_chart(fig_12m, use_container_width=True)
-                     logging.info("Gráfico 12 meses (Plotly) exibido.")
-                elif hasattr(fig_12m, 'figure') and hasattr(fig_12m.figure, 'savefig'):
-                     st.pyplot(fig_12m.figure)
-                     logging.info("Gráfico 12 meses (Matplotlib) exibido.")
+            # Importações Acumuladas (12 Meses - KG) - MOVIDO PARA CÁ
+            try:
+                st.markdown("##### Importações Acumuladas (12 Meses - KG)")
+                # Busca dados e gera gráfico de 12 meses
+                fig_12m = gerar_grafico_importacoes_12meses(ncm_code, ncm_formatado)
+                if fig_12m is not None:
+                    if isinstance(fig_12m, go.Figure):
+                         st.plotly_chart(fig_12m, use_container_width=True)
+                         # Adiciona a fonte diretamente abaixo do gráfico
+                         st.caption("Fonte: Comex Stat/MDIC. Elaboração própria.")
+                         logging.info("Gráfico 12 meses (Plotly) exibido.")
+                    else:
+                         st.warning("Gráfico de importações 12 meses não pôde ser exibido (formato não reconhecido).")
+                         logging.warning(f"Tipo retornado por gerar_grafico_importacoes_12meses: {type(fig_12m)}")
                 else:
-                     st.warning("Gráfico de importações 12 meses não pôde ser exibido (formato não reconhecido).")
-                     logging.warning(f"Tipo retornado por gerar_grafico_importacoes_12meses: {type(fig_12m)}")
-            else:
-                st.info("Não foi possível gerar o gráfico de importações 12 meses (dados indisponíveis ou erro na geração).")
-        except AttributeError as e:
-             st.error(f"Erro: Função 'gerar_grafico_importacoes_12meses' não encontrada no módulo importado: {e}")
-             logging.error(f"Erro de atributo em gerar_grafico_importacoes_12meses: {e}", exc_info=True)
-        except Exception as e:
-             st.error(f"Erro ao gerar/exibir gráfico de Importações 12 Meses: {e}")
-             logging.error(f"Erro em gerar_grafico_importacoes_12meses: {e}", exc_info=True)
+                    # Mensagem de dados insuficientes é exibida dentro da função gerar_grafico_importacoes_12meses
+                    logging.info("Gráfico 12 meses não gerado (retornou None).")
+            except NameError: # Se a importação falhou lá em cima
+                 st.error("Erro: A função 'gerar_grafico_importacoes_12meses' não foi importada corretamente.")
+                 logging.error("NameError ao chamar gerar_grafico_importacoes_12meses.")
+            except AttributeError as e: # Se o módulo foi importado mas a função não existe
+                 st.error(f"Erro: Função 'gerar_grafico_importacoes_12meses' não encontrada no módulo importado: {e}")
+                 logging.error(f"Erro de atributo em gerar_grafico_importacoes_12meses: {e}", exc_info=True)
+            except Exception as e:
+                 st.error(f"Erro ao gerar/exibir gráfico de Importações 12 Meses: {e}")
+                 logging.error(f"Erro em gerar_grafico_importacoes_12meses: {e}", exc_info=True)
 
-        # Treemaps (separados para clareza)
+        # Treemaps continuam fora das colunas, ocupando a largura toda
+        st.divider() # Adiciona um separador antes dos treemaps
         exibir_treemap(ncm_code, ncm_formatado, tipo_flow='import')
+        st.divider()
         exibir_treemap(ncm_code, ncm_formatado, tipo_flow='export')
 
     elif not error_hist: # Se não houve erro ao buscar/processar, mas o DF está vazio
         st.warning("Não há dados históricos da API disponíveis para gerar os gráficos.")
-    # else: # Se houve erro ao buscar/processar df_hist_anual (já tratado acima)
-    #      st.warning(f"Não foi possível carregar os dados históricos da API para gerar os gráficos devido a erro: {error_hist}")
+    # else: (erro já tratado)
+        # st.warning(f"Não foi possível carregar os dados históricos da API para gerar os gráficos devido a erro: {error_hist}")
 
 
 def main():
@@ -902,16 +930,3 @@ if __name__ == "__main__":
               st.error(f"Ocorreu um erro crítico inesperado na aplicação: {e}")
          except:
               pass
-
-
-
-
-
-
-
-
-
-
-
-
-
