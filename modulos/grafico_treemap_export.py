@@ -54,4 +54,3 @@ def gerar_treemap_exportacoes_2024(df_export_2024_country, ncm_code, ncm_str):
     )
     
     return fig_export
-
