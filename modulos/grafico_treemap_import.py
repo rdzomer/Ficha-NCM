@@ -62,3 +62,4 @@ def gerar_treemap_importacoes_2024(df_import_2024_country, ncm_code, ncm_str):
 
 
 
+
