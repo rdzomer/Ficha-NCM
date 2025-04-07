@@ -796,5 +796,3 @@ if __name__ == "__main__":
               st.error(f"Ocorreu um erro crítico inesperado na aplicação: {e}")
          except:
               pass
-
-
