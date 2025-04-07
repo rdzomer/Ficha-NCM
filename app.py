@@ -533,10 +533,12 @@ def exibir_api(ncm_code, last_updated_month, last_updated_year):
             except Exception as e:
                  st.error(f"Erro ao gerar/exibir gráfico de Importações 12 Meses: {e}")
                  logging.error(f"Erro em gerar_grafico_importacoes_12meses: {e}", exc_info=True)
-        st.divider()
-        exibir_treemap(ncm_code, ncm_formatado, tipo_flow='import')
-        st.divider()
-        exibir_treemap(ncm_code, ncm_formatado, tipo_flow='export')
+        
+        cols = st.columns(2)
+        with cols[0]:
+            exibir_treemap(ncm_code, ncm_formatado, tipo_flow='import')
+        with cols[1]:
+            exibir_treemap(ncm_code, ncm_formatado, tipo_flow='export')
     elif not error_hist:
         st.warning("Não há dados históricos da API disponíveis para gerar os gráficos.")
 
