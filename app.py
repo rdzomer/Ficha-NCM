@@ -1,6 +1,53 @@
 # -*- coding: utf-8 -*-
 import streamlit as st
 st.set_page_config(page_title="Análise de Comércio Exterior", layout="wide")
+st.markdown(
+    """
+    <style>
+    .top-bar {
+        background-color: #002f6c; /* Cor de fundo (azul escuro) */
+        padding: 10px 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 15px; /* Espaço após a barra */
+    }
+    .top-bar .title {
+        font-size: 1.25rem;
+        font-weight: bold;
+        color: #ffffff; /* Cor do texto do título (branco) */
+    }
+    .top-bar .button-container {
+        display: flex;
+        gap: 10px; /* Espaço entre os botões */
+    }
+    .top-bar .button-link {
+        text-decoration: none;
+        background-color: #00c9c8; /* Cor do botão (teal) */
+        color: #ffffff;
+        padding: 8px 16px;
+        border-radius: 4px;
+        font-size: 0.9rem;
+        transition: background-color 0.3s ease;
+    }
+    .top-bar .button-link:hover {
+        background-color: #009b9a; /* Cor do botão ao passar o mouse */
+    }
+    </style>
+    <div class="top-bar">
+        <div class="title">DASHBOARD CGIM</div>
+        <div class="button-container">
+            <a class="button-link" href="https://ncm-dashboard.shinyapps.io/registro-prompts/" target="_blank">
+                Registro de Prompts de IA
+            </a>
+            <a class="button-link" href="https://www.gov.br/mdic/pt-br/assuntos/competitividade-industrial/depreciacao-acelerada/faq" target="_blank">
+                Depreciação Acelerada
+            </a>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 import pandas as pd
 from io import BytesIO
@@ -930,3 +977,4 @@ if __name__ == "__main__":
               st.error(f"Ocorreu um erro crítico inesperado na aplicação: {e}")
          except:
               pass
+
