@@ -181,36 +181,62 @@ def exibir_dados(df, periodo, error, resumido=False):
              st.warning(f"Aviso: Erro ao formatar números para '{periodo}'.")
     st.dataframe(df_formatado, use_container_width=True, hide_index=True)
 
-def exibir_comparativo(df_2024_parcial, df_2025_parcial, error_2024_parcial, error_2025_parcial, resumido=False):
+def exibir_comparativo(
+    df_2024_parcial,
+    df_2025_parcial,
+    error_2024_parcial,
+    error_2025_parcial,
+    resumido=False,
+    last_updated_month=None
+):
     """Exibe a comparação entre dados parciais de 2024 e 2025."""
-    st.markdown("### Comparativo Ano Atual vs Ano Anterior (Mesmo Período)")
+    # Dicionário para converter número do mês em abreviação
+    month_map = {
+        1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr", 5: "Mai", 6: "Jun",
+        7: "Jul", 8: "Ago", 9: "Set", 10: "Out", 11: "Nov", 12: "Dez"
+    }
+    
+    # Monta o título dinamicamente
+    if last_updated_month and isinstance(last_updated_month, int) and last_updated_month in month_map:
+        # Por exemplo, se last_updated_month=3, o título será "Comparativo Jan-Mar (Ano Atual vs Ano Anterior)"
+        periodo_label = f"{month_map[1]}-{month_map[last_updated_month]}"
+        st.markdown(f"### Comparativo {periodo_label} (Ano Atual vs Ano Anterior)")
+    else:
+        st.markdown("### Comparativo Ano Atual vs Ano Anterior (Mesmo Período)")
+    
     if error_2024_parcial:
         st.warning(f"Erro ao obter/processar dados parciais de 2024: {error_2024_parcial}")
     if error_2025_parcial:
         st.warning(f"Erro ao obter/processar dados parciais de 2025: {error_2025_parcial}")
+    
     df_24_valido = isinstance(df_2024_parcial, pd.DataFrame) and not df_2024_parcial.empty
     df_25_valido = isinstance(df_2025_parcial, pd.DataFrame) and not df_2025_parcial.empty
+    
     if not df_24_valido or not df_25_valido:
         st.warning("Não há dados suficientes para comparação (um ou ambos os períodos estão vazios ou inválidos).")
         return
+    
     df_comp_24 = df_2024_parcial.copy()
     df_comp_25 = df_2025_parcial.copy()
+    
     if 'Ano' not in df_comp_24.columns or 'Ano' not in df_comp_25.columns:
-         st.error("Erro interno: Coluna 'Ano' não encontrada nos DataFrames parciais para comparação.")
-         logging.error(f"Coluna 'Ano' ausente nos DFs parciais. DF24 cols: {df_comp_24.columns.tolist()}, DF25 cols: {df_comp_25.columns.tolist()}")
-         return
+        st.error("Erro interno: Coluna 'Ano' não encontrada nos DataFrames parciais para comparação.")
+        return
+    
     try:
         df_comparativo = pd.concat([df_comp_24, df_comp_25], ignore_index=True)
     except Exception as e:
         st.error(f"Erro ao concatenar DataFrames para comparação: {e}")
-        logging.error(f"Erro ao concatenar DFs comparativos.", exc_info=True)
         return
+    
     try:
         df_comparativo = df_comparativo.sort_values(by='Ano').reset_index(drop=True)
-    except Exception as e:
+    except Exception:
         st.warning("Coluna 'Ano' não encontrada ou inválida para ordenar o comparativo.")
-        logging.warning(f"Erro ao ordenar comparativo por 'Ano': {e}. Colunas: {df_comparativo.columns.tolist()}")
+    
+    # Exibe a tabela usando a função exibir_dados (que já existe)
     exibir_dados(df_comparativo, "Comparativo Agregado", None, resumido)
+
 
 def obter_dados_tuple(ncm_code, tipo, last_updated_month):
     """
@@ -415,9 +441,16 @@ def exibir_api(ncm_code, last_updated_month, last_updated_year):
          error_2025_parcial = error_2025_parcial or f"Erro inesperado de processamento: {e}"
     with st.container(border=True):
         st.markdown("##### Dados Históricos e Comparativos")
-        exibir_dados(df_hist_anual, periodo_hist, error_hist, resumido=False)
-        st.divider()
-        exibir_comparativo(df_2024_parcial, df_2025_parcial, error_2024_parcial, error_2025_parcial, exibir_resumida)
+    exibir_dados(df_hist_anual, periodo_hist, error_hist, resumido=False)
+    st.divider()
+    exibir_comparativo(
+        df_2024_parcial,
+        df_2025_parcial,
+        error_2024_parcial,
+        error_2025_parcial,
+        exibir_resumida,
+        st.session_state.last_updated_month
+    )
     try:
         df_24_valido = isinstance(df_2024_parcial, pd.DataFrame) and not df_2024_parcial.empty
         df_25_valido = isinstance(df_2025_parcial, pd.DataFrame) and not df_2025_parcial.empty
@@ -798,3 +831,4 @@ if __name__ == "__main__":
               st.error(f"Ocorreu um erro crítico inesperado na aplicação: {e}")
          except:
               pass
+
