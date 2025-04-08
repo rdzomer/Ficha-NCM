@@ -35,10 +35,10 @@ def gerar_treemap_exportacoes_2024(df_export_2024_country, ncm_code, ncm_str):
     
     # 5. Ajustar dimensões (exemplo: 700×600 para forma mais quadrada)
     fig_export.update_layout(
-        margin=dict(t=40, l=10, r=10, b=40),
-        width=700,
-        height=600
-    )
+    margin=dict(t=40, l=10, r=10, b=40),
+    width=600,
+    height=600
+)
     
     # 6. Personalizar o texto interno e o tooltip (hover)
     fig_export.update_traces(
@@ -54,3 +54,4 @@ def gerar_treemap_exportacoes_2024(df_export_2024_country, ncm_code, ncm_str):
     )
     
     return fig_export
+
