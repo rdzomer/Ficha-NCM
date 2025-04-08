@@ -34,10 +34,10 @@ def gerar_treemap_importacoes_2024(df_import_2024_country, ncm_code, ncm_str):
     
     # Ajustar dimensões (exemplo de forma quadrada)
     fig_import.update_layout(
-        margin=dict(t=40, l=10, r=10, b=40),
-        width=700,
-        height=600
-    )
+    margin=dict(t=40, l=10, r=10, b=40),
+    width=600,
+    height=600
+)
     
     # Personalizar texto e hover
     fig_import.update_traces(
@@ -58,6 +58,11 @@ def gerar_treemap_importacoes_2024(df_import_2024_country, ncm_code, ncm_str):
     )
     
     return fig_import
+
+
+
+
+
 
 
 
