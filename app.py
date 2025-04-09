@@ -28,7 +28,7 @@ try:
     import modulos.grafico_importacoes_fob as graf_fob
     import modulos.grafico_exportacoes_fob as graf_exp_fob
     import modulos.grafico_preco_medio_fob as graf_preco_medio
-    import modulos.resumo_tabelas as resumo_tabelas  # Função exibir_resumos precisa aceitar args
+   # import modulos.resumo_tabelas as resumo_tabelas  # Função exibir_resumos precisa aceitar args
     from modulos.grafico_treemap_import import gerar_treemap_importacoes_2024
     from modulos.grafico_treemap_export import gerar_treemap_exportacoes_2024
     from modulos.grafico_importacoes_12meses import gerar_grafico_importacoes_12meses  # Verificar retorno
