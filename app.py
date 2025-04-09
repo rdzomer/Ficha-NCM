@@ -451,28 +451,7 @@ def exibir_api(ncm_code, last_updated_month, last_updated_year):
         exibir_resumida,
         st.session_state.last_updated_month
     )
-    try:
-        df_24_valido = isinstance(df_2024_parcial, pd.DataFrame) and not df_2024_parcial.empty
-        df_25_valido = isinstance(df_2025_parcial, pd.DataFrame) and not df_2025_parcial.empty
-        if df_24_valido and df_25_valido:
-             resumo_tabelas.exibir_resumos(df_2024_parcial, df_2025_parcial)
-             logging.info("Quadros-resumo exibidos.")
-        else:
-             st.info("Não foi possível exibir os quadros-resumo (dados parciais ausentes ou inválidos).")
-             logging.warning(f"Quadros-resumo pulados. DF24 válido: {df_24_valido}, DF25 válido: {df_25_valido}")
-    except TypeError as e:
-         if "positional arguments but" in str(e):
-              st.error("Erro: A função 'exibir_resumos' no módulo 'resumo_tabelas' não está configurada para receber os dados necessários.")
-              logging.error(f"TypeError em resumo_tabelas.exibir_resumos: {e}.", exc_info=True)
-         else:
-              st.warning(f"Erro ao chamar a função de quadros-resumo: {e}")
-              logging.warning(f"Falha ao chamar resumo_tabelas.exibir_resumos: {e}", exc_info=True)
-    except AttributeError as e:
-         st.warning(f"Função 'exibir_resumos' não encontrada ou erro no módulo 'resumo_tabelas': {e}")
-         logging.warning(f"Falha ao chamar resumo_tabelas.exibir_resumos: {e}", exc_info=True)
-    except Exception as e:
-        st.warning(f"Não foi possível exibir os quadros-resumo: {e}")
-        logging.warning(f"Falha ao chamar resumo_tabelas.exibir_resumos: {e}", exc_info=True)
+   
     st.markdown("### Gráficos de Desempenho")
     if isinstance(df_hist_anual, pd.DataFrame) and not df_hist_anual.empty:
         ncm_formatado = f"{str(ncm_code)[:4]}.{str(ncm_code)[4:6]}.{str(ncm_code)[6:]}"
