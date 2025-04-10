@@ -9,4 +9,5 @@ matplotlib
 plotly_express
 pdfplumber
 pyPDF2
+numpy
 #urllib3<2
