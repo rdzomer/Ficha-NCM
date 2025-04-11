@@ -11,7 +11,6 @@ def exibir_resumos(df_hist_anual, df_2024_parcial, df_2025_parcial):
         df_hist = df_hist_anual.copy()
         df_hist.rename(columns={'year': 'Ano'}, inplace=True)
         df_hist['Ano'] = df_hist['Ano'].astype(str)
-
         df_hist = df_hist[df_hist['Ano'].astype(int) >= 2019]
 
         if df_2024_parcial is not None and not df_2024_parcial.empty:
@@ -54,24 +53,29 @@ def exibir_resumos(df_hist_anual, df_2024_parcial, df_2025_parcial):
             ]
             return variacoes
 
-        df_imp = df_concat[['Ano', 'Importações (FOB)', 'Importações (KG)', 'Preço Médio Importação (US$ FOB/KG)']].copy()
+        df_concat.rename(columns={
+            'Preço Médio Importação (US$ FOB/KG)': 'Preço Médio Importação (US$ FOB/Ton)',
+            'Preço Médio Exportação (US$ FOB/KG)': 'Preço Médio Exportação (US$ FOB/Ton)'
+        }, inplace=True)
+
+        df_imp = df_concat[['Ano', 'Importações (FOB)', 'Importações (KG)', 'Preço Médio Importação (US$ FOB/Ton)']].copy()
         df_imp['Var. (%) Imp (US$ FOB)'] = calcular_variacao(df_imp['Importações (FOB)'])
         df_imp['Var. (%) Imp (kg)'] = calcular_variacao(df_imp['Importações (KG)'])
-        df_imp['Var. (%) Preço Médio Imp'] = calcular_variacao(df_imp['Preço Médio Importação (US$ FOB/KG)'])
+        df_imp['Var. (%) Preço Médio Imp'] = calcular_variacao(df_imp['Preço Médio Importação (US$ FOB/Ton)'])
 
-        df_exp = df_concat[['Ano', 'Exportações (FOB)', 'Exportações (KG)', 'Preço Médio Exportação (US$ FOB/KG)']].copy()
+        df_exp = df_concat[['Ano', 'Exportações (FOB)', 'Exportações (KG)', 'Preço Médio Exportação (US$ FOB/Ton)']].copy()
         df_exp['Var. (%) Exp (US$ FOB)'] = calcular_variacao(df_exp['Exportações (FOB)'])
         df_exp['Var. (%) Exp (kg)'] = calcular_variacao(df_exp['Exportações (KG)'])
-        df_exp['Var. (%) Preço Médio Exp'] = calcular_variacao(df_exp['Preço Médio Exportação (US$ FOB/KG)'])
+        df_exp['Var. (%) Preço Médio Exp'] = calcular_variacao(df_exp['Preço Médio Exportação (US$ FOB/Ton)'])
 
         df_imp_final = df_imp[[
             'Ano', 'Importações (FOB)', 'Var. (%) Imp (US$ FOB)', 'Importações (KG)',
-            'Var. (%) Imp (kg)', 'Preço Médio Importação (US$ FOB/KG)', 'Var. (%) Preço Médio Imp'
+            'Var. (%) Imp (kg)', 'Preço Médio Importação (US$ FOB/Ton)', 'Var. (%) Preço Médio Imp'
         ]]
 
         df_exp_final = df_exp[[
             'Ano', 'Exportações (FOB)', 'Var. (%) Exp (US$ FOB)', 'Exportações (KG)',
-            'Var. (%) Exp (kg)', 'Preço Médio Exportação (US$ FOB/KG)', 'Var. (%) Preço Médio Exp'
+            'Var. (%) Exp (kg)', 'Preço Médio Exportação (US$ FOB/Ton)', 'Var. (%) Preço Médio Exp'
         ]]
 
         df_imp_final = df_imp_final[df_imp_final['Ano'] != '2019']
@@ -81,6 +85,10 @@ def exibir_resumos(df_hist_anual, df_2024_parcial, df_2025_parcial):
             for col in df_final.columns:
                 if 'Var. (%)' in col:
                     df_final[col] = df_final[col].map(lambda x: f"{x:.2f}%" if pd.notna(x) and x != "" else "")
+                elif 'Preço Médio' in col:
+                    df_final[col] = df_final[col].map(
+                        lambda x: f"{x * 1000:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") if pd.notna(x) else ""
+                    )
                 elif df_final[col].dtype == float or df_final[col].dtype == int:
                     df_final[col] = df_final[col].map(lambda x: f"{x:,.0f}".replace(",", ".") if pd.notna(x) else "")
 
@@ -100,3 +108,4 @@ def exibir_resumos(df_hist_anual, df_2024_parcial, df_2025_parcial):
 
     except Exception as e:
         st.error(f"Erro ao gerar quadros-resumo: {e}")
+
