@@ -411,6 +411,7 @@ def exibir_treemap(ncm_code, ncm_formatado, tipo_flow):
 def exibir_api(ncm_code, last_updated_month, last_updated_year):
     """Orquestra a busca e exibição de dados e gráficos da API Comex."""
     st.subheader("📊 Dados da API Comex e Gráficos")
+    exibir_resumida = st.checkbox("Exibir tabelas comparativas resumidas", key="chk_resumida", value=True)
     dados_export_hist, dados_import_hist, err_exp_hist, err_imp_hist = obter_dados_tuple(ncm_code, "historico_anual", last_updated_month)
     dados_export_24p, dados_import_24p, err_exp_24p, err_imp_24p = obter_dados_tuple(ncm_code, "2024_parcial", last_updated_month)
     dados_export_25p, dados_import_25p, err_exp_25p, err_imp_25p = obter_dados_tuple(ncm_code, "2025_parcial", last_updated_month)
