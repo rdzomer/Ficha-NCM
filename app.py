@@ -80,7 +80,7 @@ st.markdown(
             <a class="button-link" href="https://ncm-dashboard.shinyapps.io/registro-prompts/" target="_blank">
                 Registro de Prompts de IA
             </a>
-            <a class="button-link" href="https://exemplo.com/depreciacao-acelerada" target="_blank">
+            <a class="button-link" href="https://app.powerbi.com/groups/me/reports/1ffd7a1f-1c4f-4604-92cb-59cf0f0a97e1/8416e484095d20a25048?experience=power-bi" target="_blank">
                 Depreciação Acelerada
             </a>
         </div>
