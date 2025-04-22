@@ -625,8 +625,8 @@ def analisar_ncm(ncm_code, can_analyze_api, last_updated_month, last_updated_yea
 def main():
     st.markdown("""
     <div style='width: 100%; display: flex; align-items: center;'>
-        <h1 style='text-align: left; color: #333; margin: 0; padding-right: 20px;'>📊 Análise de Comércio Exterior</h1>
-        <p style='text-align: left; font-size: 0.85em; color: #666; margin: 0;'>Desenvolvido pela CGIM/DINTE/SDIC</p>
+        <h1 style='text-align: left; margin: 0; padding-right: 20px;'>📊 Análise de Comércio Exterior</h1>
+        <p style='text-align: left; font-size: 0.85em; opacity: 0.7; margin: 0;'>Desenvolvido pela CGIM/DINTE/SDIC</p>
     </div>
 """, unsafe_allow_html=True)
     if 'selected_ncm' not in st.session_state:
