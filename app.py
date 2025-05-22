@@ -472,7 +472,13 @@ def exibir_api(ncm_code, last_updated_month, last_updated_year):
         df_24_valido = isinstance(df_2024_parcial, pd.DataFrame) and not df_2024_parcial.empty
         df_25_valido = isinstance(df_2025_parcial, pd.DataFrame) and not df_2025_parcial.empty
         if df_24_valido and df_25_valido:
-             resumo_tabelas.exibir_resumos(df_hist_anual, df_2024_parcial, df_2025_parcial)
+             resumo_tabelas.exibir_resumos(
+                df_hist_anual,
+                df_2024_parcial,
+            df_2025_parcial,
+            st.session_state.last_updated_month
+    )
+
              logging.info("Quadros-resumo exibidos.")
         else:
              st.info("Não foi possível exibir os quadros-resumo (dados parciais ausentes ou inválidos).")
