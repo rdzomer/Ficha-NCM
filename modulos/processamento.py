@@ -327,77 +327,59 @@ def _processar_dados_parciais(dados_export, dados_import, ano, last_updated_mont
     """
     Processa dados parciais de exportação e importação para um ano específico,
     retornando um DataFrame de UMA LINHA com os totais do período.
-
-    Retorna: (pd.DataFrame, str | None) DataFrame de uma linha e erro.
     """
-    logging.info(f"Processando dados parciais para {ano}...")
+    logging.info(f"Processando dados parciais para {ano} até o mês {last_updated_month}...")
     df_agg = pd.DataFrame()
     error = None
+
+    # Mapa de meses em português
+    mapa_meses = {
+        1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr", 5: "Mai", 6: "Jun",
+        7: "Jul", 8: "Ago", 9: "Set", 10: "Out", 11: "Nov", 12: "Dez"
+    }
+
     try:
-        df_exp = pd.DataFrame(dados_export) if dados_export else pd.DataFrame()
-        df_imp = pd.DataFrame(dados_import) if dados_import else pd.DataFrame()
+        df_exp = pd.DataFrame(dados_export)
+        df_imp = pd.DataFrame(dados_import)
 
         colunas_metricas = ['metricFOB', 'metricKG']
-
-        # Garante colunas e converte para numérico
         df_exp = _converter_colunas_numericas(df_exp, colunas_metricas)
         df_imp = _converter_colunas_numericas(df_imp, colunas_metricas)
 
-        # Renomeia
         df_exp = df_exp.rename(columns={'metricFOB': 'Exportações (FOB)', 'metricKG': 'Exportações (KG)'})
         df_imp = df_imp.rename(columns={'metricFOB': 'Importações (FOB)', 'metricKG': 'Importações (KG)'})
 
-        # Seleciona apenas as colunas de valor existentes para somar
-        exp_cols_sum = [col for col in ['Exportações (FOB)', 'Exportações (KG)'] if col in df_exp.columns]
-        imp_cols_sum = [col for col in ['Importações (FOB)', 'Importações (KG)'] if col in df_imp.columns]
+        totais = {
+            'Exportações (FOB)': df_exp['Exportações (FOB)'].sum(skipna=True),
+            'Exportações (KG)': df_exp['Exportações (KG)'].sum(skipna=True),
+            'Importações (FOB)': df_imp['Importações (FOB)'].sum(skipna=True),
+            'Importações (KG)': df_imp['Importações (KG)'].sum(skipna=True),
+        }
 
-        # Soma os valores para o período (já devem ser numéricos ou NA)
-        # .sum() ignora NA por padrão
-        exp_totals = df_exp[exp_cols_sum].sum()
-        imp_totals = df_imp[imp_cols_sum].sum()
+        totais['Balança Comercial (FOB)'] = totais['Exportações (FOB)'] - totais['Importações (FOB)']
+        totais['Balança Comercial (KG)'] = totais['Exportações (KG)'] - totais['Importações (KG)']
 
-        # === CORREÇÃO ValueError: Cria DataFrame de uma linha diretamente ===
-        # Concatena as Series de totais
-        all_totals = pd.concat([exp_totals, imp_totals])
-        # Converte a Series resultante em um DataFrame de uma linha
-        df_agg = pd.DataFrame([all_totals]) # Chave: [all_totals] cria lista com um item
+        totais['Preço Médio Exportação (US$ FOB/KG)'] = (
+            totais['Exportações (FOB)'] / totais['Exportações (KG)']
+            if totais['Exportações (KG)'] else 0
+        )
+        totais['Preço Médio Importação (US$ FOB/KG)'] = (
+            totais['Importações (FOB)'] / totais['Importações (KG)']
+            if totais['Importações (KG)'] else 0
+        )
 
-        # Adiciona coluna 'Ano'
-        df_agg['Ano'] = ano
-        logging.info(f"Dados parciais para {ano} agregados com sucesso.")
+        nome_mes = mapa_meses.get(last_updated_month, f"M{last_updated_month:02d}")
+        totais['Ano'] = ano
 
-        # Calcula Balança e Preço Médio para esta única linha (com segurança)
-        # Preenche NaNs com 0 APÓS a agregação para cálculos
-        df_agg = df_agg.fillna(0)
-
-        if 'Exportações (FOB)' in df_agg.columns and 'Importações (FOB)' in df_agg.columns:
-             df_agg['Balança Comercial (FOB)'] = df_agg['Exportações (FOB)'] - df_agg['Importações (FOB)']
-        if 'Exportações (KG)' in df_agg.columns and 'Importações (KG)' in df_agg.columns:
-             df_agg['Balança Comercial (KG)'] = df_agg['Exportações (KG)'] - df_agg['Importações (KG)']
-
-        if 'Exportações (FOB)' in df_agg.columns and 'Exportações (KG)' in df_agg.columns:
-             df_agg['Preço Médio Exportação (US$ FOB/KG)'] = df_agg.apply(
-                 lambda row: (row['Exportações (FOB)'] / row['Exportações (KG)']) if row['Exportações (KG)'] != 0 else 0, axis=1
-             )
-        if 'Importações (FOB)' in df_agg.columns and 'Importações (KG)' in df_agg.columns:
-             df_agg['Preço Médio Importação (US$ FOB/KG)'] = df_agg.apply(
-                 lambda row: (row['Importações (FOB)'] / row['Importações (KG)']) if row['Importações (KG)'] != 0 else 0, axis=1
-             )
+        df_agg = pd.DataFrame([totais])
 
     except Exception as e:
+        logging.error(f"Erro ao processar dados parciais para {ano}: {e}", exc_info=True)
         error = f"Erro ao processar dados parciais para {ano}: {e}"
-        logging.error(error, exc_info=True)
-        # Retorna DF vazio com colunas esperadas para consistência
-        cols_esperadas = ['Exportações (FOB)', 'Exportações (KG)', 'Importações (FOB)', 'Importações (KG)', 'Ano',
-                          'Balança Comercial (FOB)', 'Balança Comercial (KG)',
-                          'Preço Médio Exportação (US$ FOB/KG)', 'Preço Médio Importação (US$ FOB/KG)']
-        df_agg = pd.DataFrame(columns=cols_esperadas)
-
-    # Garante que 'Ano' seja Int64
-    if 'Ano' in df_agg.columns:
-        df_agg['Ano'] = df_agg['Ano'].astype('Int64')
+        df_agg = pd.DataFrame()
 
     return df_agg, error
+
 
 
 def processar_dados_ano_anterior(dados_export, dados_import, last_updated_month):
@@ -413,4 +395,3 @@ def processar_dados_ano_atual(dados_export, dados_import, last_updated_month):
     # Exemplo: Se a API está em Fev/2025, o ano atual é 2025.
     ano_atual = 2025 # Temporariamente fixo
     return _processar_dados_parciais(dados_export, dados_import, ano_atual, last_updated_month)
-
