@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import streamlit as st
-st.set_page_config(page_title="Análise de Comércio Exterior", layout="wide")
+st.set_page_config(page_title="Análise de Comércio Exterior", layout="wide") 
 
 import pandas as pd
 from io import BytesIO
@@ -80,7 +80,7 @@ st.markdown(
             <a class="button-link" href="https://ncm-dashboard.shinyapps.io/registro-prompts/" target="_blank">
                 Registro de Prompts de IA
             </a>
-            <a class="button-link" href="https://app.powerbi.com/groups/me/reports/1ffd7a1f-1c4f-4604-92cb-59cf0f0a97e1/8416e484095d20a25048?experience=power-bi" target="_blank">
+            <a class="button-link" href="https://exemplo.com/depreciacao-acelerada" target="_blank">
                 Depreciação Acelerada
             </a>
         </div>
@@ -123,9 +123,21 @@ def criar_dataframe_resumido(df):
                                 'Importações (FOB)', 'Importações (KG)',
                                 'Balança Comercial (FOB)', 'Balança Comercial (KG)']
     colunas_existentes_no_df = [col for col in colunas_resumo_esperadas if col in df.columns]
-    if not colunas_existentes_no_df or 'Ano' not in colunas_existentes_no_df:
-         logging.warning(f"Colunas de resumo esperadas ({colunas_resumo_esperadas}) não encontradas ou 'Ano' ausente. Colunas presentes: {df.columns.tolist()}")
-         return pd.DataFrame(columns=colunas_resumo_esperadas)
+    if 'Ano' not in df.columns:
+        logging.warning(f"Coluna 'Ano' ausente. Colunas presentes: {df.columns.tolist()}")
+        return pd.DataFrame()
+
+    colunas_existentes_no_df = [col for col in colunas_resumo_esperadas if col in df.columns]
+    if not colunas_existentes_no_df:
+        logging.warning(f"Nenhuma das colunas esperadas está presente. Colunas disponíveis: {df.columns.tolist()}")
+        return df.copy()
+
+    df_resumo = df[colunas_existentes_no_df].copy()
+    for col in colunas_resumo_esperadas:
+        if col not in df_resumo.columns:
+            df_resumo[col] = ""  # Preenche com vazio onde estiver faltando
+    return df_resumo
+
     logging.info(f"Criando DataFrame resumido com colunas: {colunas_existentes_no_df}")
     return df[colunas_existentes_no_df].copy()
 
@@ -168,7 +180,8 @@ def exibir_dados(df, periodo, error, resumido=False):
              logging.info(f"DataFrame resumido criado para '{periodo}'.")
     df_formatado = df_para_exibir.copy()
     if 'Ano' in df_formatado.columns:
-        df_formatado['Ano'] = df_formatado['Ano'].astype(str).replace('nan', 'N/D').replace('<NA>', 'N/D')
+        df_formatado['Ano'] = df_formatado['Ano'].astype(str)
+        df_formatado['Ano'] = df_formatado['Ano'].replace({'nan': 'N/D', '<NA>': 'N/D'})
     colunas_excluir_formatacao = ['Ano', 'month', 'monthNumber_exp', 'monthNumber_imp']
     colunas_numericas = [col for col in df_formatado.columns
                          if col not in colunas_excluir_formatacao and pd.api.types.is_numeric_dtype(df_para_exibir[col])]
@@ -179,7 +192,13 @@ def exibir_dados(df, periodo, error, resumido=False):
         except Exception as e:
              logging.error(f"Erro ao aplicar formatação numérica para '{periodo}': {e}", exc_info=True)
              st.warning(f"Aviso: Erro ao formatar números para '{periodo}'.")
-    st.dataframe(df_formatado, use_container_width=True, hide_index=True)
+    # Adição do style para alinhar à direita
+    st.dataframe(
+        df_formatado.style.set_properties(**{'text-align': 'right'}),
+        use_container_width=True,
+        hide_index=True
+    )
+
 
 def exibir_comparativo(
     df_2024_parcial,
@@ -190,51 +209,49 @@ def exibir_comparativo(
     last_updated_month=None
 ):
     """Exibe a comparação entre dados parciais de 2024 e 2025."""
-    # Dicionário para converter número do mês em abreviação
     month_map = {
         1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr", 5: "Mai", 6: "Jun",
         7: "Jul", 8: "Ago", 9: "Set", 10: "Out", 11: "Nov", 12: "Dez"
     }
-    
-    # Monta o título dinamicamente
+
     if last_updated_month and isinstance(last_updated_month, int) and last_updated_month in month_map:
-        # Por exemplo, se last_updated_month=3, o título será "Comparativo Jan-Mar (Ano Atual vs Ano Anterior)"
         periodo_label = f"{month_map[1]}-{month_map[last_updated_month]}"
         st.markdown(f"### Comparativo {periodo_label} (Ano Atual vs Ano Anterior)")
     else:
         st.markdown("### Comparativo Ano Atual vs Ano Anterior (Mesmo Período)")
-    
+
     if error_2024_parcial:
         st.warning(f"Erro ao obter/processar dados parciais de 2024: {error_2024_parcial}")
     if error_2025_parcial:
         st.warning(f"Erro ao obter/processar dados parciais de 2025: {error_2025_parcial}")
-    
+
     df_24_valido = isinstance(df_2024_parcial, pd.DataFrame) and not df_2024_parcial.empty
     df_25_valido = isinstance(df_2025_parcial, pd.DataFrame) and not df_2025_parcial.empty
-    
+
     if not df_24_valido or not df_25_valido:
         st.warning("Não há dados suficientes para comparação (um ou ambos os períodos estão vazios ou inválidos).")
         return
-    
+
     df_comp_24 = df_2024_parcial.copy()
     df_comp_25 = df_2025_parcial.copy()
-    
-    if 'Ano' not in df_comp_24.columns or 'Ano' not in df_comp_25.columns:
-        st.error("Erro interno: Coluna 'Ano' não encontrada nos DataFrames parciais para comparação.")
-        return
-    
+
+    # 🔧 Garanta nomes consistentes
+    if 'Ano' in df_comp_24.columns:
+        df_comp_24['Ano'] = df_comp_24['Ano'].astype(str)
+    if 'Ano' in df_comp_25.columns:
+        df_comp_25['Ano'] = df_comp_25['Ano'].astype(str)
+
     try:
         df_comparativo = pd.concat([df_comp_24, df_comp_25], ignore_index=True)
     except Exception as e:
         st.error(f"Erro ao concatenar DataFrames para comparação: {e}")
         return
-    
+
     try:
         df_comparativo = df_comparativo.sort_values(by='Ano').reset_index(drop=True)
     except Exception:
         st.warning("Coluna 'Ano' não encontrada ou inválida para ordenar o comparativo.")
-    
-    # Exibe a tabela usando a função exibir_dados (que já existe)
+
     exibir_dados(df_comparativo, "Comparativo Agregado", None, resumido)
 
 
@@ -574,6 +591,18 @@ def exibir_api(ncm_code, last_updated_month, last_updated_year):
             exibir_treemap(ncm_code, ncm_formatado, tipo_flow='export')
     elif not error_hist:
         st.warning("Não há dados históricos da API disponíveis para gerar os gráficos.")
+
+# Obter mês e ano mais recentes da API Comex
+if "last_updated_month" not in st.session_state or "last_updated_year" not in st.session_state:
+    data_atualizacao, ano_atualizacao, mes_atualizacao = obter_data_ultima_atualizacao()
+    try:
+        st.session_state.last_updated_year = int(ano_atualizacao)
+        st.session_state.last_updated_month = int(mes_atualizacao)
+        logging.info(f"Dados da API atualizados até: {mes_atualizacao}/{ano_atualizacao}")
+    except Exception as e:
+        st.session_state.last_updated_year = 2025
+        st.session_state.last_updated_month = 3  # fallback
+        st.warning(f"Erro ao definir o mês/ano de atualização. Usando valores padrão. Erro: {e}")
 
 def analisar_ncm(ncm_code, can_analyze_api, last_updated_month, last_updated_year):
     ncm_formatado = f"{ncm_code[:4]}.{ncm_code[4:6]}.{ncm_code[6:8]}"
