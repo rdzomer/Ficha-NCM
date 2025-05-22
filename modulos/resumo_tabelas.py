@@ -1,7 +1,48 @@
-import pandas as pd
-import numpy as np
-import streamlit as st
+# resumo_tabelas.py
+# ------------------------------------------------------------
+# Gera quadros‑resumo de importações e exportações (histórico,
+# parciais de 2024 e 2025) e exibe em colunas Streamlit.
+# ------------------------------------------------------------
 
+from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+import streamlit as st
+from babel.numbers import format_decimal
+
+# ------------------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------------------
+def formatar_numero(valor):
+    """
+    Formata números para o padrão brasileiro:
+    1) Usa ponto como separador de milhar e vírgula como decimal.
+    2) Mantém até 2 casas quando existirem valores fracionários.
+    3) Retorna string vazia para NaN/None ou valor vazio.
+    """
+    if pd.isna(valor):
+        return ""
+    try:
+        return format_decimal(float(valor), "#,##0.##", locale="pt_BR")
+    except (ValueError, TypeError):
+        return str(valor)
+
+
+def calcular_variacao(serie: pd.Series) -> list[float]:
+    """
+    Calcula a variação percentual entre linhas consecutivas.
+    O primeiro elemento não possui comparação -> NaN.
+    """
+    return [np.nan] + [
+        ((curr - prev) / prev * 100) if pd.notna(prev) and prev != 0 else np.nan
+        for prev, curr in zip(serie[:-1], serie[1:])
+    ]
+
+
+# ------------------------------------------------------------------------
+# Função principal para exibição
+# ------------------------------------------------------------------------
 def exibir_resumos(df_hist_anual, df_2024_parcial, df_2025_parcial):
     try:
         if df_hist_anual is None or df_hist_anual.empty:
@@ -11,21 +52,13 @@ def exibir_resumos(df_hist_anual, df_2024_parcial, df_2025_parcial):
         df_hist = df_hist_anual.copy()
         df_hist.rename(columns={'year': 'Ano'}, inplace=True)
         df_hist['Ano'] = df_hist['Ano'].astype(str)
-        df_hist = df_hist[df_hist['Ano'].astype(int) >= 2019]
+        import datetime
+        ano_atual = datetime.datetime.now().year
+        df_hist = df_hist[df_hist['Ano'].astype(int).between(2019, ano_atual - 1)]
 
-        if df_2024_parcial is not None and not df_2024_parcial.empty:
-            df_2024 = df_2024_parcial.copy()
-            mes_atual_2024 = int(df_2024['month'].iloc[0]) if 'month' in df_2024.columns else 3
-            df_2024['Ano'] = f"2024 (Até mês {mes_atual_2024:02d})"
-        else:
-            df_2024 = pd.DataFrame()
 
-        if df_2025_parcial is not None and not df_2025_parcial.empty:
-            df_2025 = df_2025_parcial.copy()
-            mes_atual_2025 = int(df_2025['month'].iloc[0]) if 'month' in df_2025.columns else 3
-            df_2025['Ano'] = f"2025 (Até mês {mes_atual_2025:02d})"
-        else:
-            df_2025 = pd.DataFrame()
+        df_2024 = df_2024_parcial.copy() if df_2024_parcial is not None else pd.DataFrame()
+        df_2025 = df_2025_parcial.copy() if df_2025_parcial is not None else pd.DataFrame()
 
         colunas = [
             'Ano',
@@ -39,12 +72,10 @@ def exibir_resumos(df_hist_anual, df_2024_parcial, df_2025_parcial):
             df_2025[colunas] if not df_2025.empty else pd.DataFrame(columns=colunas)
         ], ignore_index=True)
 
-        ordem_exibicao = ['2019', '2020', '2021', '2022', '2023', '2024',
-                          f"2024 (Até mês {mes_atual_2024:02d})", f"2025 (Até mês {mes_atual_2025:02d})"]
-
-        df_concat = df_concat[df_concat['Ano'].isin(ordem_exibicao)]
-        df_concat['Ano'] = pd.Categorical(df_concat['Ano'], categories=ordem_exibicao, ordered=True)
-        df_concat.sort_values(by='Ano', inplace=True)
+        df_concat.rename(columns={
+            'Preço Médio Importação (US$ FOB/KG)': 'Preço Médio Importação (US$ FOB/Ton)',
+            'Preço Médio Exportação (US$ FOB/KG)': 'Preço Médio Exportação (US$ FOB/Ton)'
+        }, inplace=True)
 
         def calcular_variacao(col):
             variacoes = [np.nan] + [
@@ -53,10 +84,8 @@ def exibir_resumos(df_hist_anual, df_2024_parcial, df_2025_parcial):
             ]
             return variacoes
 
-        df_concat.rename(columns={
-            'Preço Médio Importação (US$ FOB/KG)': 'Preço Médio Importação (US$ FOB/Ton)',
-            'Preço Médio Exportação (US$ FOB/KG)': 'Preço Médio Exportação (US$ FOB/Ton)'
-        }, inplace=True)
+        df_concat['Ano'] = df_concat['Ano'].astype(str)
+        df_concat.sort_values(by='Ano', inplace=True)
 
         df_imp = df_concat[['Ano', 'Importações (FOB)', 'Importações (KG)', 'Preço Médio Importação (US$ FOB/Ton)']].copy()
         df_imp['Var. (%) Imp (US$ FOB)'] = calcular_variacao(df_imp['Importações (FOB)'])
@@ -68,12 +97,12 @@ def exibir_resumos(df_hist_anual, df_2024_parcial, df_2025_parcial):
         df_exp['Var. (%) Exp (kg)'] = calcular_variacao(df_exp['Exportações (KG)'])
         df_exp['Var. (%) Preço Médio Exp'] = calcular_variacao(df_exp['Preço Médio Exportação (US$ FOB/Ton)'])
 
-        df_imp_final = df_imp[[
+        df_imp_final = df_imp[[ 
             'Ano', 'Importações (FOB)', 'Var. (%) Imp (US$ FOB)', 'Importações (KG)',
             'Var. (%) Imp (kg)', 'Preço Médio Importação (US$ FOB/Ton)', 'Var. (%) Preço Médio Imp'
         ]]
 
-        df_exp_final = df_exp[[
+        df_exp_final = df_exp[[ 
             'Ano', 'Exportações (FOB)', 'Var. (%) Exp (US$ FOB)', 'Exportações (KG)',
             'Var. (%) Exp (kg)', 'Preço Médio Exportação (US$ FOB/Ton)', 'Var. (%) Preço Médio Exp'
         ]]
@@ -92,10 +121,7 @@ def exibir_resumos(df_hist_anual, df_2024_parcial, df_2025_parcial):
                 elif df_final[col].dtype == float or df_final[col].dtype == int:
                     df_final[col] = df_final[col].map(lambda x: f"{x:,.0f}".replace(",", ".") if pd.notna(x) else "")
 
-            df_final.loc[df_final['Ano'].str.contains("2024 \(Até mês"), [col for col in df_final.columns if 'Var. (%)' in col]] = ""
-
         col1, col2 = st.columns(2)
-
         with col1:
             st.markdown("### 📊 Quadro Resumo das Importações")
             st.dataframe(df_imp_final.style.set_properties(**{'text-align': 'left'}),
@@ -105,6 +131,9 @@ def exibir_resumos(df_hist_anual, df_2024_parcial, df_2025_parcial):
             st.markdown("### 📊 Quadro Resumo das Exportações")
             st.dataframe(df_exp_final.style.set_properties(**{'text-align': 'left'}),
                          use_container_width=True, hide_index=True)
+
+    except Exception as e:
+        st.error(f"Erro ao gerar quadros-resumo: {e}")
 
     except Exception as e:
         st.error(f"Erro ao gerar quadros-resumo: {e}")
