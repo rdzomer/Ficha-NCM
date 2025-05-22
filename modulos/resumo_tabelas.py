@@ -10,17 +10,12 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from babel.numbers import format_decimal
+import datetime
 
 # ------------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------------
 def formatar_numero(valor):
-    """
-    Formata números para o padrão brasileiro:
-    1) Usa ponto como separador de milhar e vírgula como decimal.
-    2) Mantém até 2 casas quando existirem valores fracionários.
-    3) Retorna string vazia para NaN/None ou valor vazio.
-    """
     if pd.isna(valor):
         return ""
     try:
@@ -28,22 +23,16 @@ def formatar_numero(valor):
     except (ValueError, TypeError):
         return str(valor)
 
-
 def calcular_variacao(serie: pd.Series) -> list[float]:
-    """
-    Calcula a variação percentual entre linhas consecutivas.
-    O primeiro elemento não possui comparação -> NaN.
-    """
     return [np.nan] + [
         ((curr - prev) / prev * 100) if pd.notna(prev) and prev != 0 else np.nan
         for prev, curr in zip(serie[:-1], serie[1:])
     ]
 
-
 # ------------------------------------------------------------------------
 # Função principal para exibição
 # ------------------------------------------------------------------------
-def exibir_resumos(df_hist_anual, df_2024_parcial, df_2025_parcial):
+def exibir_resumos(df_hist_anual, df_2024_parcial, df_2025_parcial, last_updated_month):
     try:
         if df_hist_anual is None or df_hist_anual.empty:
             st.warning("Dados históricos não disponíveis.")
@@ -52,10 +41,8 @@ def exibir_resumos(df_hist_anual, df_2024_parcial, df_2025_parcial):
         df_hist = df_hist_anual.copy()
         df_hist.rename(columns={'year': 'Ano'}, inplace=True)
         df_hist['Ano'] = df_hist['Ano'].astype(str)
-        import datetime
         ano_atual = datetime.datetime.now().year
         df_hist = df_hist[df_hist['Ano'].astype(int).between(2019, ano_atual - 1)]
-
 
         df_2024 = df_2024_parcial.copy() if df_2024_parcial is not None else pd.DataFrame()
         df_2025 = df_2025_parcial.copy() if df_2025_parcial is not None else pd.DataFrame()
@@ -65,6 +52,18 @@ def exibir_resumos(df_hist_anual, df_2024_parcial, df_2025_parcial):
             'Importações (FOB)', 'Importações (KG)', 'Preço Médio Importação (US$ FOB/KG)',
             'Exportações (FOB)', 'Exportações (KG)', 'Preço Médio Exportação (US$ FOB/KG)'
         ]
+
+        # Renomeia as linhas finais para refletir o mês mais atualizado
+        month_map = {
+            1: "jan", 2: "fev", 3: "mar", 4: "abr", 5: "mai", 6: "jun",
+            7: "jul", 8: "ago", 9: "set", 10: "out", 11: "nov", 12: "dez"
+        }
+        label_mes = month_map.get(last_updated_month, f"até mês {last_updated_month}")
+
+        if not df_2024.empty:
+            df_2024['Ano'] = f"2024 (até {label_mes})"
+        if not df_2025.empty:
+            df_2025['Ano'] = f"2025 (até {label_mes})"
 
         df_concat = pd.concat([
             df_hist[colunas],
@@ -76,13 +75,6 @@ def exibir_resumos(df_hist_anual, df_2024_parcial, df_2025_parcial):
             'Preço Médio Importação (US$ FOB/KG)': 'Preço Médio Importação (US$ FOB/Ton)',
             'Preço Médio Exportação (US$ FOB/KG)': 'Preço Médio Exportação (US$ FOB/Ton)'
         }, inplace=True)
-
-        def calcular_variacao(col):
-            variacoes = [np.nan] + [
-                ((curr - prev) / prev * 100) if pd.notna(prev) and prev != 0 else np.nan
-                for prev, curr in zip(col[:-1], col[1:])
-            ]
-            return variacoes
 
         df_concat['Ano'] = df_concat['Ano'].astype(str)
         df_concat.sort_values(by='Ano', inplace=True)
@@ -134,7 +126,3 @@ def exibir_resumos(df_hist_anual, df_2024_parcial, df_2025_parcial):
 
     except Exception as e:
         st.error(f"Erro ao gerar quadros-resumo: {e}")
-
-    except Exception as e:
-        st.error(f"Erro ao gerar quadros-resumo: {e}")
-
