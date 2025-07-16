@@ -76,13 +76,7 @@ st.markdown(
     </style>
     <div class="top-bar">
         <div class="title">DASHBOARD CGIM</div>
-        <div class="button-container">
-            <a class="button-link" href="https://ncm-dashboard.shinyapps.io/registro-prompts/" target="_blank">
-                Registro de Prompts de IA
-            </a>
-            <a class="button-link" href="https://exemplo.com/depreciacao-acelerada" target="_blank">
-                Depreciação Acelerada
-            </a>
+        <div class="button-container">            
         </div>
     </div>
     """,
